@@ -1,9 +1,9 @@
 {
-  "version": "1.2",
-  "api_version": 2,
-  "major_update": false,
-  "minor_update": true,
+  "version": "1.0",
+  "api_version": 1,
+  "major_update": true,
+  "minor_update": false,
   "security_update": false,
-  "changelog": "- Add Security Fixes.\n- Bug Fixes",
+  "changelog": "- Add Major Update\n- New Features Added",
   "guide": "1. Connect ESP32 via USB.\n2. Flash new firmware.bin via WebFlasher."
 }
