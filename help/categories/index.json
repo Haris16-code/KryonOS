@@ -1,1 +1,12 @@
-
+{
+  "categories": [
+    {
+      "name": "Getting Started with app store",
+      "url": ""
+    },
+    {
+      "name": "Updates",
+      "url": "https://raw.githubusercontent.com/.../updates_index.json"
+    }
+  ]
+}
