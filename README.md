@@ -22,22 +22,26 @@ KryonOS is an **open-source**, lightweight, high-performance **GUI** Operating S
 
 ## Pin Connections
 
-The display and SD card share the standard ESP32 SPI bus. Below is the typical pin configuration used by KryonOS:
+The display and SD card use separate SPI buses on KryonOS. The display and touch pinout matches the **ESP32 Marauder** (v4, v6, and v6.1) hardware out-of-the-box. Below is the pin configuration:
 
 | ESP32 Pin | ILI9341 TFT | SD Card Module | Notes |
 | :--- | :--- | :--- | :--- |
-| **GPIO 23** | MOSI | MOSI | SPI MOSI (Shared) |
-| **GPIO 19** | MISO | MISO | SPI MISO (Shared) |
-| **GPIO 18** | SCK / CLK | SCK / CLK | SPI Clock (Shared) |
-| **GPIO 15** | CS | - | TFT Chip Select |
-| **GPIO 2**  | DC / RS | - | TFT Data/Command |
-| **GPIO 4**  | RST | - | TFT Reset |
+| **GPIO 23** | MOSI | - | TFT SPI MOSI |
+| **GPIO 19** | MISO | - | TFT SPI MISO |
+| **GPIO 18** | SCK / CLK | - | TFT SPI Clock |
+| **GPIO 17** | CS | - | TFT Chip Select |
+| **GPIO 16** | DC / RS | - | TFT Data/Command |
+| **GPIO 5**  | RST | - | TFT Reset |
 | **GPIO 21** | T_CS | - | Touch Chip Select |
-| **GPIO 5**  | - | CS | SD Card Chip Select |
+| **GPIO 13** | - | MOSI | SD SPI MOSI |
+| **GPIO 26** | - | MISO | SD SPI MISO |
+| **GPIO 14** | - | SCK / CLK | SD SPI Clock |
+| **GPIO 15** | - | CS | SD Card Chip Select |
 | **3V3**     | VCC / LED | VCC | 3.3V Power |
 | **GND**     | GND | GND | Ground |
 
-*(Note: If your specific board uses a different pinout, you can modify the pin definitions in your `User_Setup.h` file for TFT_eSPI).*
+*(Note: If your specific board uses a different pinout, you can modify the display pins in your `platformio.ini` and the SD pins in `FileSystem.cpp`).*
+
 
 ## How to Flash
 
