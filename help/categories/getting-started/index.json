@@ -1,1 +1,13 @@
-
+{
+  "category": "App Store Guide",
+  "articles": [
+    {
+      "title": "How App Store works",
+      "url": "https://raw.githubusercontent.com/.../how_app_store_works.json"
+    },
+    {
+      "title": "Browsing categories",
+      "url": "https://raw.githubusercontent.com/.../browsing_categories.json"
+    }
+  ]
+}
