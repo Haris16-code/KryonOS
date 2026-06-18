@@ -4,7 +4,7 @@ KryonOS is an **open-source**, lightweight, high-performance Operating System an
 
 <!-- ![KryonOS Screenshot](./assets/screenshot.png) -->
 
-## ✨ Features
+## Features
 
 * **JavaScript App Runtime:** Execute interactive JS apps natively on the ESP32 using the optimized Duktape engine.
 * **Rich UI & Graphics:** Built-in graphics library with double-buffering support for smooth, tear-free 2D and 3D rendering.
@@ -13,14 +13,14 @@ KryonOS is an **open-source**, lightweight, high-performance Operating System an
 * **Hardware API:** Easy-to-use JavaScript APIs for controlling GPIO, reading touch input, accessing the SD card, and reading sensors.
 * **Multitasking Feel:** Launch, suspend, and switch between utility apps, games, and hardware monitors.
 
-## 🛠 Hardware Needed
+## Hardware Needed
 
 * **ESP32 Development Boards** (Supported: ESP32 WROOM-32, ESP32-S2, ESP32-S3, ESP32-C3)
 * **ILI9341 2.8" TFT Display** (SPI interface with XPT2046 Touch Controller)
 * **MicroSD Card Module** (SPI interface)
 * **Breadboard & Jumper Wires**
 
-## 🔌 Pin Connections
+## Pin Connections
 
 The display and SD card share the standard ESP32 SPI bus. Below is the typical pin configuration used by KryonOS:
 
@@ -39,7 +39,7 @@ The display and SD card share the standard ESP32 SPI bus. Below is the typical p
 
 *(Note: If your specific board uses a different pinout, you can modify the pin definitions in your `User_Setup.h` file for TFT_eSPI).*
 
-## ⚡ How to Flash
+## How to Flash
 
 ### Option 1: Using Precompiled Binaries
 You can download the latest precompiled firmware `.bin` files directly from our [Releases Page](https://github.com/Haris16-code/KryonOS/releases). 
@@ -61,18 +61,18 @@ To build and flash the firmware from source using PlatformIO:
 pio run -t upload
 ```
 
-## 📚 Documentation & Community
+## Documentation & Community
 
 * [App Development Guide](./Documentation/App_Development_Guide.md) - Learn how to build and structure JavaScript applications for KryonOS.
 * [JavaScript API Guide](./Documentation/JS_API_Guide.md) - Learn how to access system hardware using KryonOS's JS API.
 * [KryonOS Wiki](https://github.com/Haris16-code/KryonOS/wiki) - Official wiki for detailed guides, tutorials, and system architecture.
 * [Discussions](https://github.com/Haris16-code/KryonOS/discussions) - Join the community, ask questions, and share your ideas.
 
-## 🚀 Roadmap
+## Roadmap
 
 * **Expanded Board Support:** Future updates will bring support for a wider variety of microcontrollers and ESP32 variants.
 * **More Hardware APIs:** Continuous expansion of the JavaScript API to expose more low-level hardware features (e.g., Bluetooth, I2C, SPI sensors, advanced PWM, and deep sleep).
 
-## 📄 License
+## License
 
 KryonOS is licensed under the [GNU General Public License v3.0](./LICENSE).
