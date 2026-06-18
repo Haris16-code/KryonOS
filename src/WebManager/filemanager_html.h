@@ -1,0 +1,531 @@
+#ifndef FILEMANAGER_HTML_H
+#define FILEMANAGER_HTML_H
+
+const char filemanager_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 Storage Manager</title>
+    <style>
+        :root {
+            --bg-color: #f4f6f9;
+            --card-bg: #ffffff;
+            --text-color: #333333;
+            --primary-color: #007bff;
+            --primary-hover: #0056b3;
+            --danger-color: #dc3545;
+            --danger-hover: #bd2130;
+            --border-color: #e0e0e0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        body { background-color: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; height: 100vh; }
+        
+        header { background-color: #1e293b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        header h1 { font-size: 1.25rem; font-weight: 600; }
+        
+        .container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Sidebar Styling */
+        sidebar { width: 240px; background-color: #0f172a; color: #94a3b8; padding: 20px 10px; display: flex; flex-direction: column; gap: 10px; }
+        .storage-btn { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-weight: 500; }
+        .storage-btn:hover { background-color: #1e293b; color: white; }
+        .storage-btn.active { background-color: var(--primary-color); color: white; }
+
+        /* Main Workspace */
+        main { flex: 1; display: flex; flex-direction: column; padding: 20px; overflow: hidden; }
+        
+        /* Toolbar */
+        .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 12px 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; gap: 10px; }
+        .breadcrumbs { font-weight: 500; font-size: 0.95rem; color: #64748b; }
+        .breadcrumbs span { color: var(--text-color); cursor: pointer; }
+        .breadcrumbs span:hover { text-decoration: underline; }
+        .actions { display: flex; gap: 10px; align-items: center; }
+        
+        /* UI Elements */
+        .btn { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s; }
+        .btn-primary { background-color: var(--primary-color); color: white; }
+        .btn-primary:hover { background-color: var(--primary-hover); }
+        .btn-danger { background-color: var(--danger-color); color: white; }
+        .btn-danger:hover { background-color: var(--danger-hover); }
+        .btn-secondary { background-color: #e2e8f0; color: #334155; }
+        .btn-secondary:hover { background-color: #cbd5e1; }
+        
+        input[type="file"] { display: none; }
+
+        /* File List Table */
+        .file-card { background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-y: auto; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        table { width: 100%; border-collapse: collapse; text-align: left; }
+        th, td { padding: 12px 20px; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
+        th { background-color: #f8fafc; font-weight: 600; color: #64748b; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background-color: #f8fafc; }
+        
+        .file-icon { font-size: 1.1rem; margin-right: 8px; }
+        .clickable-row { cursor: pointer; color: var(--primary-color); font-weight: 500; }
+        .clickable-row:hover { text-decoration: underline; }
+        .row-actions { display: flex; gap: 8px; justify-content: flex-end; }
+        .row-actions button { padding: 4px 8px; font-size: 0.75rem; }
+
+        /* Progress Bar */
+        .progress-container { display: none; width: 100%; background-color: #e2e8f0; border-radius: 4px; margin-top: 10px; overflow: hidden; }
+        .progress-bar { width: 0%; height: 8px; background-color: #22c55e; transition: width 0.1s; }
+
+        /* Modal Editor & Popups */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: var(--card-bg); border-radius: 8px; width: 90%; max-width: 800px; display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
+        .modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-body { padding: 20px; flex: 1; overflow-y: auto; }
+        .modal-footer { padding: 15px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
+        
+        #editor-textarea { width: 100%; height: 400px; font-family: "Courier New", Courier, monospace; font-size: 0.9rem; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical; }
+        
+        .form-group { margin-bottom: 15px; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.85rem; }
+        .form-group input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>ESP32 File Dashboard</h1>
+        <div id="sys-status" style="font-size: 0.85rem; color: #cbd5e1;">Connected</div>
+    </header>
+
+    <div class="container">
+        <sidebar>
+            <div class="storage-btn active" id="btn-littlefs" onclick="switchStorage('/littlefs')">
+                <span class="file-icon">📁</span> LittleFS
+            </div>
+            <div class="storage-btn" id="btn-sd" onclick="switchStorage('/sd')">
+                <span class="file-icon">💾</span> SD Card
+            </div>
+        </sidebar>
+
+        <main>
+            <div class="toolbar">
+                <div class="breadcrumbs" id="breadcrumb-container">
+                    Root: <span onclick="navigateTo('/')">/</span>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-secondary" onclick="refreshDir()">🔄 Refresh</button>
+                    <button class="btn btn-secondary" onclick="openCreateModal('folder')">📁 New Folder</button>
+                    <button class="btn btn-secondary" onclick="openCreateModal('file')">📄 New File</button>
+                    <label class="btn btn-primary">
+                        📤 Upload File
+                        <input type="file" id="file-uploader" onchange="uploadFile()">
+                    </label>
+                    <label class="btn btn-primary">
+                        📂 Upload Folder
+                        <input type="file" id="folder-uploader" webkitdirectory directory multiple onchange="uploadFolder()">
+                    </label>
+                </div>
+                <div class="progress-container" id="upload-progress-zone">
+                    <div class="progress-bar" id="upload-progress"></div>
+                </div>
+            </div>
+
+            <div class="file-card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Size (Bytes)</th>
+                            <th style="text-align: right;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="file-list-body">
+                        </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+
+    <div class="modal" id="editor-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="editor-title">Editing File</h3>
+                <button class="btn" onclick="closeModal('editor-modal')">❌</button>
+            </div>
+            <div class="modal-body">
+                <textarea id="editor-textarea" spellcheck="false"></textarea>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('editor-modal')">Cancel</button>
+                <button class="btn btn-primary" onclick="saveFileContent()">💾 Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="input-modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">
+                <h3 id="input-modal-title">Action</h3>
+                <button class="btn" onclick="closeModal('input-modal')">❌</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label id="input-modal-label" for="input-modal-value">Name</label>
+                    <input type="text" id="input-modal-value" autocomplete="off">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeModal('input-modal')">Cancel</button>
+                <button class="btn btn-primary" id="input-modal-submit">Submit</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global State variables
+        let currentStorage = '/littlefs'; // Base mount root
+        let currentPath = '/';            // Current directory track relative to root
+        let activeEditingPath = '';       // Tracks absolute path of file being edited
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadDirectory();
+        });
+
+        function switchStorage(storagePrefix) {
+            currentStorage = storagePrefix;
+            currentPath = '/';
+            document.querySelectorAll('.storage-btn').forEach(btn => btn.classList.remove('active'));
+            if(storagePrefix === '/littlefs') document.getElementById('btn-littlefs').classList.add('active');
+            if(storagePrefix === '/sd') document.getElementById('btn-sd').classList.add('active');
+            loadDirectory();
+        }
+
+        function getAbsolutePath(relPath) {
+            let cleanPath = (currentPath === '/') ? '/' + relPath : currentPath + '/' + relPath;
+            // Ensure path prefixes cleanly with storage mount configuration
+            return `${currentStorage}${cleanPath}`.replace(/\/+/g, '/');
+        }
+
+        // --- API INTEGRATION TARGETS ---
+        // Adjust these fetch calls to reflect your preferred ESP32 routing rules.
+
+        async function loadDirectory() {
+            const fullTargetUrl = `/api/list?dir=${encodeURIComponent(currentStorage + currentPath)}`.replace(/\/+/g, '/');
+            updateBreadcrumbs();
+            
+            try {
+                const response = await fetch(fullTargetUrl);
+                if (!response.ok) throw new Error("Failed to fetch folder directory listings.");
+                const items = await response.json();
+                renderItems(items);
+            } catch (err) {
+                console.error(err);
+                // Mock layout populated if file is executed locally without active ESP32 server environment
+                renderItems([
+                    {name: "system_config.json", type: "file", size: 512},
+                    {name: "web_assets", type: "dir", size: 0},
+                    {name: "sensor_log.csv", type: "file", size: 4096}
+                ]);
+            }
+        }
+
+        function renderItems(items) {
+            const tbody = document.getElementById('file-list-body');
+            tbody.innerHTML = '';
+
+            // Render navigation up link row if inside subfolders
+            if (currentPath !== '/') {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="clickable-row" colspan="3" onclick="navigateUp()">📁 .. (Go Back up One Directory)</td>
+                `;
+                tbody.appendChild(tr);
+            }
+
+            items.forEach(item => {
+                const tr = document.createElement('tr');
+                const isDir = item.type === 'dir';
+                const icon = isDir ? '📁' : '📄';
+                const itemAbsPath = getAbsolutePath(item.name);
+
+                tr.innerHTML = `
+                    <td class="${isDir ? 'clickable-row' : ''}" onclick="${isDir ? `clickDir('${item.name}')` : ''}">
+                        <span class="file-icon">${icon}</span>${item.name}
+                    </td>
+                    <td>${isDir ? '-' : formatBytes(item.size)}</td>
+                    <td class="row-actions">
+                        ${!isDir ? `<button class="btn btn-secondary" onclick="editFile('${itemAbsPath}')">✏️ Edit</button>` : ''}
+                        ${!isDir ? `<button class="btn btn-secondary" onclick="downloadFile('${itemAbsPath}')">📥 Get</button>` : ''}
+                        <button class="btn btn-secondary" onclick="openRenameModal('${item.name}')">✏️ Rename</button>
+                        <button class="btn btn-danger" onclick="deleteItem('${itemAbsPath}')">🗑️ Del</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function clickDir(dirName) {
+            currentPath = (currentPath === '/') ? '/' + dirName : currentPath + '/' + dirName;
+            loadDirectory();
+        }
+
+        function navigateUp() {
+            let parts = currentPath.split('/').filter(p => p);
+            parts.pop();
+            currentPath = '/' + parts.join('/');
+            loadDirectory();
+        }
+
+        function navigateTo(path) {
+            currentPath = path;
+            loadDirectory();
+        }
+
+        function refreshDir() {
+            loadDirectory();
+        }
+
+        function updateBreadcrumbs() {
+            const container = document.getElementById('breadcrumb-container');
+            container.innerHTML = `Storage Root: <span onclick="navigateTo('/')">${currentStorage}</span>`;
+            
+            let accumulativePath = '';
+            const parts = currentPath.split('/').filter(p => p);
+            
+            parts.forEach(part => {
+                accumulativePath += '/' + part;
+                const freezePath = accumulativePath;
+                container.innerHTML += ` / <span onclick="navigateTo('${freezePath}')">${part}</span>`;
+            });
+        }
+
+        // --- FILE CRUD OPERATION IMPLEMENTATIONS ---
+
+        async function editFile(absoluteFilePath) {
+            activeEditingPath = absoluteFilePath;
+            document.getElementById('editor-title').innerText = `Editing: ${absoluteFilePath}`;
+            document.getElementById('editor-textarea').value = "Loading data content...";
+            openModal('editor-modal');
+
+            try {
+                const response = await fetch(`/api/edit?path=${encodeURIComponent(absoluteFilePath)}`);
+                if(response.ok) {
+                    const text = await response.text();
+                    document.getElementById('editor-textarea').value = text;
+                } else {
+                    alert("Error extracting target file data payload details.");
+                }
+            } catch (err) {
+                document.getElementById('editor-textarea').value = "// Local UI Demo Mode\n{\n  \"status\": \"offline\"\n}";
+            }
+        }
+
+        async function saveFileContent() {
+            const textData = document.getElementById('editor-textarea').value;
+            try {
+                const response = await fetch(`/api/edit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `path=${encodeURIComponent(activeEditingPath)}&content=${encodeURIComponent(textData)}`
+                });
+                if(response.ok) {
+                    closeModal('editor-modal');
+                    loadDirectory();
+                } else {
+                    alert("Failed to successfully execute modification changes to storage chip.");
+                }
+            } catch(e) {
+                alert("Simulated save success on offline mockup layout dashboard config.");
+                closeModal('editor-modal');
+            }
+        }
+
+        function downloadFile(absoluteFilePath) {
+            window.open(`/api/download?path=${encodeURIComponent(absoluteFilePath)}`, '_blank');
+        }
+
+        async function deleteItem(absoluteFilePath) {
+            if(!confirm(`Are you certain you wish to delete: ${absoluteFilePath}?`)) return;
+            
+            try {
+                const response = await fetch(`/api/delete`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: `path=${encodeURIComponent(absoluteFilePath)}`
+                });
+                if(response.ok) {
+                    loadDirectory();
+                } else {
+                    alert("Failed to delete target entry.");
+                }
+            } catch(e) {
+                alert("Deleted (Mock Action Sandbox mode active).");
+            }
+        }
+
+        function openCreateModal(type) {
+            const title = type === 'folder' ? 'Create New Folder' : 'Create New File';
+            const label = type === 'folder' ? 'Folder Name' : 'File Name';
+            
+            document.getElementById('input-modal-title').innerText = title;
+            document.getElementById('input-modal-label').innerText = label;
+            const inputField = document.getElementById('input-modal-value');
+            inputField.value = '';
+            
+            openModal('input-modal');
+            
+            document.getElementById('input-modal-submit').onclick = async () => {
+                const targetName = inputField.value.trim();
+                if(!targetName) return;
+                
+                const completePath = getAbsolutePath(targetName);
+                try {
+                    const response = await fetch(`/api/create`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `path=${encodeURIComponent(completePath)}&type=${type}`
+                    });
+                    if(response.ok) {
+                        closeModal('input-modal');
+                        loadDirectory();
+                    } else {
+                        alert("Error generating asset container on drive system.");
+                    }
+                } catch(e) {
+                    closeModal('input-modal');
+                }
+            };
+        }
+
+        function openRenameModal(oldName) {
+            document.getElementById('input-modal-title').innerText = "Rename Item";
+            document.getElementById('input-modal-label').innerText = `New Name for ${oldName}`;
+            const inputField = document.getElementById('input-modal-value');
+            inputField.value = oldName;
+            
+            openModal('input-modal');
+            
+            document.getElementById('input-modal-submit').onclick = async () => {
+                const newName = inputField.value.trim();
+                if(!newName || newName === oldName) { closeModal('input-modal'); return; }
+                
+                try {
+                    const response = await fetch(`/api/rename`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: `oldPath=${encodeURIComponent(getAbsolutePath(oldName))}&newPath=${encodeURIComponent(getAbsolutePath(newName))}`
+                    });
+                    if(response.ok) {
+                        closeModal('input-modal');
+                        loadDirectory();
+                    } else {
+                        alert("Error executing modification system parameters rename.");
+                    }
+                } catch(e) {
+                    closeModal('input-modal');
+                }
+            };
+        }
+
+        // --- LIVE FILE UPLOADER LOGIC WITH PROGRESS METRICS ---
+
+        function uploadFile() {
+            const fileInput = document.getElementById('file-uploader');
+            if (fileInput.files.length === 0) return;
+
+            const file = fileInput.files[0];
+            const xhr = new XMLHttpRequest();
+            const formData = new FormData();
+            
+            const destinationPath = getAbsolutePath(file.name);
+            formData.append("data", file, destinationPath);
+
+            const progressZone = document.getElementById('upload-progress-zone');
+            const progressBar = document.getElementById('upload-progress');
+            
+            progressZone.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            xhr.upload.addEventListener('progress', (e) => {
+                if (e.lengthComputable) {
+                    const percentComplete = (e.loaded / e.total) * 100;
+                    progressBar.style.width = percentComplete + '%';
+                }
+            });
+
+            xhr.addEventListener('load', () => {
+                progressZone.style.display = 'none';
+                if (xhr.status === 200) {
+                    loadDirectory();
+                } else {
+                    alert('Upload sequence termination encountered abnormal returns.');
+                }
+                fileInput.value = ''; // Reset configuration tracker
+            });
+
+            xhr.addEventListener('error', () => {
+                progressZone.style.display = 'none';
+                alert('Connection failure interrupted delivery process flow vectors.');
+                fileInput.value = '';
+            });
+
+            xhr.open('POST', '/api/upload', true);
+            xhr.send(formData);
+        }
+
+        async function uploadFolder() {
+            const fileInput = document.getElementById('folder-uploader');
+            if (fileInput.files.length === 0) return;
+
+            const progressZone = document.getElementById('upload-progress-zone');
+            const progressBar = document.getElementById('upload-progress');
+            progressZone.style.display = 'block';
+            progressBar.style.width = '0%';
+
+            const files = fileInput.files;
+            let loaded = 0;
+            const total = files.length;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                // webkitRelativePath contains the full relative path e.g. "MyFolder/app.json"
+                const relativePath = file.webkitRelativePath; 
+                const destinationPath = getAbsolutePath(relativePath);
+
+                const formData = new FormData();
+                formData.append("data", file, destinationPath);
+
+                try {
+                    await fetch('/api/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } catch(e) {
+                    console.error("Upload failed for", relativePath, e);
+                }
+                
+                loaded++;
+                progressBar.style.width = ((loaded / total) * 100) + '%';
+            }
+
+            progressZone.style.display = 'none';
+            fileInput.value = '';
+            loadDirectory();
+        }
+
+        // --- INTERFACE TOOL UTILITIES ---
+
+        function openModal(id) { document.getElementById(id).style.display = 'flex'; }
+        function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+    </script>
+</body>
+</html>
+)rawliteral";
+
+#endif

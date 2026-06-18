@@ -1,16 +1,12 @@
-# KryonOS JavaScript Engine - Comprehensive Reference Manual
+# HarixOS JavaScript Engine - Comprehensive Reference Manual
 
-Welcome to the **KryonOS JavaScript API Reference**. This document provides deep technical details on the underlying JavaScript engine specifications, performance characteristics, and every native API exposed by the C++ Kernel for interacting with the ESP32 hardware.
+Welcome to the **HarixOS JavaScript API Reference**. This document provides deep technical details on the underlying JavaScript engine specifications, performance characteristics, and every native API exposed by the C++ Kernel for interacting with the ESP32 hardware.
 
----
-## KryonOS JS Runtime Version
-### JS Runtime: v1.0
-### API Level: 1
 ---
 
 ## 1. Engine Specifications & ECMAScript Compliance
 
-KryonOS uses the **Duktape 2.x Based JavaScript Engine**.
+HarixOS uses the **Duktape 2.x JavaScript Engine**. Duktape is a highly optimized, lightweight C/C++ embeddable engine designed specifically for deeply embedded systems and microcontrollers with constrained RAM footprints.
 
 ### 1.1 ECMAScript Compliance
 - **ES5 / ES5.1 Compliant:** The engine is fully compliant with the ECMAScript 5.1 specification. 
@@ -147,7 +143,7 @@ The `System` object provides low-level hardware-accelerated bindings to the ESP3
 
 ## 3. Display Drawing Pipeline
 
-KryonOS uses a direct-to-glass rendering pipeline without double-buffering. Calling shape-drawing functions directly overwrites pixels on the TFT screen.
+HarixOS uses a direct-to-glass rendering pipeline without double-buffering. Calling shape-drawing functions directly overwrites pixels on the TFT screen.
 
 ### Color Engine
 The ESP32 TFT uses the high-performance **16-bit RGB565** color format. You can define colors directly via Hex (e.g. `0xF800` for Red), or use the color conversion API.
@@ -210,14 +206,15 @@ The ESP32 TFT uses the high-performance **16-bit RGB565** color format. You can 
 Double Buffering allows you to draw shapes invisibly to an off-screen RAM buffer (a Sprite) and then "push" the completed frame to the physical screen in a single instant hardware DMA transfer. This **completely eliminates 3D screen flickering**.
 
 > [!CAUTION]
-> **Severe RAM Limitations**
-> The ESP32-WROOM has very limited contiguous RAM (~320KB total, often only ~110KB max allocatable). Allocating a massive buffer (e.g. `240x320` at 16-bit color takes 153.6 KB) will cause the JavaScript Engine to **CRASH (Out of Memory)**.
-> **Always** keep your buffers as small as possible. The recommended architecture is **Vertical Strip Buffering**: allocate a tiny Mini-Sprite (e.g., `4x160` for Raycaster slices), render the column into it, and push it column-by-column to the screen!
+> **Severe RAM Limitations & Heap Fragmentation**
+> The ESP32-WROOM has very limited contiguous RAM (~320KB total, but due to fragmentation from WiFi/WebManager, the max allocatable block is often under ~30KB). Allocating a massive buffer (e.g. `240x320` at 16-bit color takes 153.6 KB) will cause the engine to instantly return `false` from `System.createSprite`.
+> **Always** keep your buffers as small as possible. The recommended architecture is **Sliced Rendering**: divide the screen into small horizontal slices (e.g. 10 slices of 32px height) or vertical columns.
+> `System.createSprite()` now automatically triggers aggressive Garbage Collection to defragment memory before allocation, and will automatically fall back to lower-quality 8-bit color to prevent crashes if RAM is too fragmented for 16-bit color.
 
 #### `System.createSprite(width, height)`
 - **Parameters:** `width, height` (Integer)
-- **Returns:** `Boolean` (`true` if successfully allocated in RAM, `false` if RAM exhausted)
-- **Description:** Allocates a persistent off-screen Sprite buffer in RAM.
+- **Returns:** `Boolean` (`true` if successfully allocated a 16-bit or 8-bit color buffer in RAM, `false` if RAM exhausted)
+- **Description:** Allocates a persistent off-screen Sprite buffer in RAM. Automatically forces GC and falls back to 8-bit color to secure contiguous memory.
 
 #### `System.bindSprite(enabled)`
 - **Parameters:** `enabled` (Boolean)
@@ -251,7 +248,7 @@ Double Buffering allows you to draw shapes invisibly to an off-screen RAM buffer
 
 ## 4. Hardware GPIO (General Purpose Input/Output)
 
-KryonOS enables direct hardware control of the ESP32 microcontroller pins via `System.gpio`.
+HarixOS enables direct hardware control of the ESP32 microcontroller pins via `System.gpio`.
 
 ### Constants
 - `System.gpio.INPUT`
@@ -366,4 +363,4 @@ The `FS` global object controls the C++ virtual file system layer. It dynamicall
 - **Description:** Triggers an SPI remount/unmount of the physical SD card.
 
 ---
-*Document Version: 1.0 (Built for KryonOS JavaScript Environment)*
+*Document Version: 1.0 (Built for HarixOS JavaScript Environment)*
