@@ -1,13 +1,4 @@
 {
-  "category": "App Store Guide",
-  "articles": [
-    {
-      "title": "How App Store works",
-      "url": "https://raw.githubusercontent.com/.../how_app_store_works.json"
-    },
-    {
-      "title": "Browsing categories",
-      "url": "https://raw.githubusercontent.com/.../browsing_categories.json"
-    }
-  ]
+  "title": "How App Store works",
+  "content": "The KryonOS App Store allows you to safely download and manage apps directly from the internet.\n\nKey features:\n- Safe downloads\n- Easy updates\n- Fast installation"
 }
