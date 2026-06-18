@@ -1,1 +1,12 @@
-
+{
+  "categories": [
+    {
+      "name": "Getting Started with app store",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/getting-started/index.json"
+    },
+    {
+      "name": "Updates",
+      "url": "https://raw.githubusercontent.com/.../updates_index.json"
+    }
+  ]
+}
