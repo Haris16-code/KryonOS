@@ -288,6 +288,5 @@ void HarixKernel::runFile(const char* filePath) {
 }
 
 void HarixKernel::loop() {
-    // Currently nothing to do in the main loop for Duktape unless we add event loops
-    // In a real implementation we would process events here
+    
 }
