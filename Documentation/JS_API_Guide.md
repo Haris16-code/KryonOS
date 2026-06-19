@@ -1,12 +1,12 @@
-# HarixOS JavaScript Engine - Comprehensive Reference Manual
+# KryonOS JavaScript Engine - Comprehensive Reference Manual
 
-Welcome to the **HarixOS JavaScript API Reference**. This document provides deep technical details on the underlying JavaScript engine specifications, performance characteristics, and every native API exposed by the C++ Kernel for interacting with the ESP32 hardware.
+Welcome to the **KryonOS JavaScript API Reference**. This document provides deep technical details on the underlying JavaScript engine specifications, performance characteristics, and every native API exposed by the C++ Kernel for interacting with the ESP32 hardware.
 
 ---
 
 ## 1. Engine Specifications & ECMAScript Compliance
 
-HarixOS uses the **Duktape 2.x JavaScript Engine**. Duktape is a highly optimized, lightweight C/C++ embeddable engine designed specifically for deeply embedded systems and microcontrollers with constrained RAM footprints.
+KryonOS uses the **Duktape 2.x JavaScript Engine**. Duktape is a highly optimized, lightweight C/C++ embeddable engine designed specifically for deeply embedded systems and microcontrollers with constrained RAM footprints.
 
 ### 1.1 ECMAScript Compliance
 - **ES5 / ES5.1 Compliant:** The engine is fully compliant with the ECMAScript 5.1 specification. 
@@ -363,4 +363,4 @@ The `FS` global object controls the C++ virtual file system layer. It dynamicall
 - **Description:** Triggers an SPI remount/unmount of the physical SD card.
 
 ---
-*Document Version: 1.0 (Built for HarixOS JavaScript Environment)*
+*Document Version: 1.0 (Built for KryonOS JavaScript Environment)*
