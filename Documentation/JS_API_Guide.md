@@ -6,7 +6,7 @@ Welcome to the **KryonOS JavaScript API Reference**. This document provides deep
 
 ## 1. Engine Specifications & ECMAScript Compliance
 
-KryonOS uses the **Duktape 2.x JavaScript Engine**. Duktape is a highly optimized, lightweight C/C++ embeddable engine designed specifically for deeply embedded systems and microcontrollers with constrained RAM footprints.
+KryonOS uses the **Duktape 2.x
 
 ### 1.1 ECMAScript Compliance
 - **ES5 / ES5.1 Compliant:** The engine is fully compliant with the ECMAScript 5.1 specification. 
