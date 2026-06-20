@@ -3,6 +3,10 @@
 Welcome to the **KryonOS JavaScript API Reference**. This document provides deep technical details on the underlying JavaScript engine specifications, performance characteristics, and every native API exposed by the C++ Kernel for interacting with the ESP32 hardware.
 
 ---
+## KryonOS JS Runtime Version
+### JS Runtime: v1.0
+### API Level: 1
+---
 
 ## 1. Engine Specifications & ECMAScript Compliance
 
