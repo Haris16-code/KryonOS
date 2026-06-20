@@ -24,21 +24,22 @@ KryonOS is an **open-source**, lightweight, high-performance **GUI** Operating S
 
 The display and SD card use separate SPI buses on KryonOS. The display and touch pinout matches the **ESP32 Marauder** (v4, v6, and v6.1) hardware out-of-the-box. Below is the pin configuration:
 
-| ESP32 Pin | ILI9341 TFT | SD Card Module | Notes |
+| ESP32 Pin | ILI9341 TFT & Touch | SD Card Module | Notes |
 | :--- | :--- | :--- | :--- |
-| **GPIO 23** | MOSI | - | TFT SPI MOSI |
-| **GPIO 19** | MISO | - | TFT SPI MISO |
-| **GPIO 18** | SCK / CLK | - | TFT SPI Clock |
-| **GPIO 17** | CS | - | TFT Chip Select |
-| **GPIO 16** | DC / RS | - | TFT Data/Command |
-| **GPIO 5**  | RST | - | TFT Reset |
-| **GPIO 21** | T_CS | - | Touch Chip Select |
-| **GPIO 13** | - | MOSI | SD SPI MOSI |
-| **GPIO 26** | - | MISO | SD SPI MISO |
-| **GPIO 14** | - | SCK / CLK | SD SPI Clock |
-| **GPIO 15** | - | CS | SD Card Chip Select |
-| **3V3**     | VCC / LED | VCC | 3.3V Power |
-| **GND**     | GND | GND | Ground |
+| **GPIO 23** | **SDI (MOSI)** *and* **T_DIN** | - | Shared SPI MOSI (Display & Touch) |
+| **GPIO 19** | **SDO (MISO)** *and* **T_DO** | - | Shared SPI MISO (Display & Touch) |
+| **GPIO 18** | **SCK** *and* **T_CLK** | - | Shared SPI Clock (Display & Touch) |
+| **GPIO 17** | **CS** | - | TFT Display Chip Select |
+| **GPIO 16** | **DC / RS** | - | TFT Data/Command Control |
+| **GPIO 5** | **RESET** | - | TFT Reset |
+| **GPIO 21** | **T_CS** | - | Touch Screen Chip Select |
+| **GPIO 32** | **LED** | - | Backlight Control (or connect to 3V3) |
+| **GPIO 13** | - | **MOSI** | Dedicated SD SPI MOSI |
+| **GPIO 26** | - | **MISO** | Dedicated SD SPI MISO |
+| **GPIO 14** | - | **SCK / CLK** | Dedicated SD SPI Clock |
+| **GPIO 15** | - | **CS** | SD Card Chip Select |
+| **3V3** | **VCC** | **VCC** | 3.3V Power Supply |
+| **GND** | **GND** | **GND** | Common Ground |
 
 *(Note: If your specific board uses a different pinout, you can modify the display pins in your `platformio.ini` and the SD pins in `FileSystem.cpp`).*
 
