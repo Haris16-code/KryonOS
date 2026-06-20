@@ -367,6 +367,6 @@ The `FS` global object controls the C++ virtual file system layer. It dynamicall
 - **Description:** Triggers an SPI remount/unmount of the physical SD card.
 
 ---
-Use Apps and Games from KryonOS Official App Store Repository As Example: https://github.com/Haris16-code/KryonOS-AppStore
+**Use Apps and Games from KryonOS Official App Store Repository As Example: https://github.com/Haris16-code/KryonOS-AppStore**
 ---
 *Document Version: 1.0 (Built for KryonOS JavaScript Environment)*
