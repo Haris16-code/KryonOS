@@ -4,7 +4,7 @@ Welcome to the **KryonOS JavaScript API Reference**. This document provides deep
 
 ---
 ## KryonOS JS Runtime Version
-### JS Runtime: v1.0
+### JS Runtime: v1.0.0
 ### API Level: 1
 ---
 
@@ -45,7 +45,7 @@ The `System` object provides low-level hardware-accelerated bindings to the ESP3
 ### OS Utilities
 
 #### `System.getOSVersion()`
-- **Returns:** `String` (e.g., `"1.0"`)
+- **Returns:** `String` (e.g., `"1.0.0"`)
 - **Description:** Returns the current OS version string.
 
 #### `System.getAPILevel()`
