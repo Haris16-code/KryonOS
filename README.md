@@ -22,27 +22,50 @@ KryonOS is an **open-source**, lightweight, high-performance **GUI** Operating S
 
 ## Pin Connections
 
-The display and SD card use separate SPI buses on KryonOS. The display and touch pinout matches the **ESP32 Marauder** (v4, v6, and v6.1) hardware out-of-the-box. Below is the pin configuration:
+KryonOS requires an ILI9341 2.8 Inch Touch display with and an SD card module. To achieve the best performance and avoid bus collisions, KryonOS uses **split SPI buses**.
 
-| ESP32 Pin | ILI9341 TFT & Touch | SD Card Module | Notes |
-| :--- | :--- | :--- | :--- |
-| **GPIO 23** | **SDI (MOSI)** *and* **T_DIN** | - | Shared SPI MOSI (Display & Touch) |
-| **GPIO 19** | **SDO (MISO)** *and* **T_DO** | - | Shared SPI MISO (Display & Touch) |
-| **GPIO 18** | **SCK** *and* **T_CLK** | - | Shared SPI Clock (Display & Touch) |
-| **GPIO 17** | **CS** | - | TFT Display Chip Select |
-| **GPIO 16** | **DC / RS** | - | TFT Data/Command Control |
-| **GPIO 5** | **RESET** | - | TFT Reset |
-| **GPIO 21** | **T_CS** | - | Touch Screen Chip Select |
-| **GPIO 32** | **LED** | - | Backlight Control (or connect to 3V3) |
-| **GPIO 13** | - | **MOSI** | Dedicated SD SPI MOSI |
-| **GPIO 26** | - | **MISO** | Dedicated SD SPI MISO |
-| **GPIO 14** | - | **SCK / CLK** | Dedicated SD SPI Clock |
-| **GPIO 15** | - | **CS** | SD Card Chip Select |
-| **3V3** | **VCC** | **VCC** | 3.3V Power Supply |
-| **GND** | **GND** | **GND** | Common Ground |
+*   **VSPI:** Used exclusively for the TFT Display and Touch controller.
+*   **HSPI:** Used exclusively for the SD Card Module.
 
-*(Note: If your specific board uses a different pinout, you can modify the display pins in your `platformio.ini` and the SD pins in `FileSystem.cpp`).*
+> [!NOTE]
+> **ESP32 Marauder Compatibility**
+> Out-of-the-box, the display and touch pinouts in KryonOS perfectly match the **ESP32 Marauder (v4, v6, and v6.1)** hardware!
 
+## Default Pin Configuration
+
+| ILI9341 2.8 Inch Touch Display Pins | ILI9341 Display Pin Labels | ESP32 Pin |
+| :--- | :--- | :--- |
+| **1** | VCC | 3.3V |
+| **2** | GND | GND |
+| **3** | CS | D17 (TXD 2) |
+| **4** | RESET | D5 |
+| **5** | DC | D16 (RXD 2) |
+| **6** | SDI (MOSI) | D23 |
+| **7** | SCK | D18 |
+| **8** | LED | D32 |
+| **9** | SDO (MISO) | D19 |
+| **10** | T_CLK | D18 |
+| **11** | T_CS | D21 |
+| **12** | T_DIN | D23 |
+| **13** | T_DO | D19 |
+| **14** | T_IRQ | X (Not Connected) |
+
+### SD Card Module (HSPI)
+| SD Card Module | ESP32 Pin | Notes |
+| :--- | :--- | :--- |
+| **MOSI** | GPIO 13 | SD SPI MOSI |
+| **MISO** | GPIO 26 | SD SPI MISO |
+| **SCK / CLK** | GPIO 14 | SD SPI Clock |
+| **CS** | GPIO 15 | SD Card Chip Select |
+
+## Changing Pins
+
+If your specific hardware setup uses different pins, you will need to recompile the OS:
+
+1.  **To change Display/Touch pins:** Open `platformio.ini` and modify the `build_flags` (e.g., `-D TFT_MOSI=23`).
+2.  **To change SD Card pins:** Open `src/FileSystem/FileSystem.cpp` and modify the `sdSPI.begin()` and `SD.begin()` lines.
+
+---
 
 ## How to Flash
 
