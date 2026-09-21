@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <LittleFS.h>
+#include <SD_MMC.h>
 #include <SPI.h>
 #include <SD.h>
 
@@ -11,6 +12,13 @@ struct FileEntry {
     String name;
     String path;
     bool isDir;
+};
+
+struct FSPath {
+    fs::FS* fs = nullptr;
+    String relPath = "";
+    
+    bool isValid() const { return fs != nullptr; }
 };
 
 class FileSystem {
@@ -49,14 +57,41 @@ public:
     
     // Cryptography
     static String getFileMD5(const char* path);
+
+    static size_t readBinaryFile(const char* path, uint8_t* buffer, size_t maxLen);
+    static bool writeBinaryFile(const char* path, const uint8_t* data, size_t len);
     
     // Mounting/Formatting
     static bool mountSD();
     static void unmountSD();
     static bool formatSD();
-    
+
 private:
-    static const int SD_CS_PIN = 15;
+    static fs::FS* _fs;
+    static FSPath resolve(const char* path);
+    static String sanitizePath(const char* path);
+    static fs::FS* getTargetFS(const char* path, String& relPath);
+
+    template <typename Func>
+    static auto withFile(const char* path, const char* mode, Func action) 
+        -> decltype(action(std::declval<File&>()));
 };
+
+template <typename Func>
+auto FileSystem::withFile(const char* path, const char* mode, Func action) 
+    -> decltype(action(std::declval<File&>())) 
+{
+    using ReturnType = decltype(action(std::declval<File&>()));
+    
+    FSPath target = resolve(path);
+    if (!target.isValid()) return ReturnType{};
+
+    File file = target.fs->open(target.relPath.c_str(), mode);
+    if (!file) return ReturnType{};
+
+    ReturnType result = action(file);
+    file.close();
+    return result;
+}
 
 #endif // FILE_SYSTEM_H

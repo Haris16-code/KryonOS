@@ -37,11 +37,11 @@ void TimeManager::init() {
 void TimeManager::syncNTP() {
     if (!ntpEnabled) return;
     // Configure and start SNTP only when WiFi is active
-    esp_sntp_stop();
-    esp_sntp_setoperatingmode(SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_setservername(1, "time.nist.gov");
-    esp_sntp_init();
+    sntp_stop();
+    sntp_setoperatingmode(SNTP_OPMODE_POLL);
+    sntp_setservername(0, "pool.ntp.org");
+    sntp_setservername(1, "time.nist.gov");
+    sntp_init();
 }
 
 void TimeManager::setManualTime(int year, int month, int day, int hour, int minute) {

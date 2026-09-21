@@ -2,19 +2,16 @@
 #define HELPCENTERUI_H
 
 #include <Arduino.h>
-#include <TFT_eSPI.h>
 #include <ArduinoJson.h>
+#include "boards/Board.h"
 
 class HelpCenterUI {
 public:
-    static void init(TFT_eSPI *tft);
     static void draw();
     static void update();
     static void handleTouch(uint16_t x, uint16_t y);
 
-private:
-    static TFT_eSPI *tftInstance;
-    
+private:    
     // 0: Main Menu (Offline vs Online)
     // 1: Offline Categories
     // 2: Offline Topics

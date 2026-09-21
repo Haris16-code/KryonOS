@@ -6,6 +6,7 @@
 #include <ArduinoJson.h>
 #include "../File System/FileSystem.h"
 #include "filemanager_html.h"
+#include "boards/Board.h"
 #include "../Kernel/TimeManager.h"
 
 AsyncWebServer server(80);
@@ -16,7 +17,7 @@ fs::FS* getFSFromPath(String& path) {
     if (path.startsWith("/sd")) {
         path = path.substring(3);
         if (path == "") path = "/";
-        return &SD;
+        return initSD();
     } else if (path.startsWith("/littlefs")) {
         path = path.substring(9);
         if (path == "") path = "/";
@@ -26,7 +27,14 @@ fs::FS* getFSFromPath(String& path) {
 }
 
 bool WebManager::init() {
-    File wifiFile = SD.open("/wifi.txt", FILE_READ);
+    fs::FS* sd = initSD();
+
+    File wifiFile;
+
+    if(sd != nullptr){
+        wifiFile = sd->open("/wifi.txt", FILE_READ);
+    };
+
     if (!wifiFile) {
         // Fallback to LittleFS
         wifiFile = LittleFS.open("/wifi.txt", FILE_READ);

@@ -1,18 +1,15 @@
 #ifndef MY_KEYBOARD_H
 #define MY_KEYBOARD_H
 
-#include <Arduino.h>
-#include <TFT_eSPI.h>
+#include "boards/Board.h"
 
 class MyKeyboard {
 public:
-    static void init(TFT_eSPI *tft);
-    static String getString(String initialText, String promptMsg, int maxLen = 30);
+    static String getString(String initialText, String promptMsg, int maxLen = 100);
 
 private:
-    static TFT_eSPI *tftInstance;
-    static void drawKeyboard(String currentText, String promptMsg, bool caps, int selectedX, int selectedY);
-    static void handleTouch(uint16_t x, uint16_t y, String &currentText, bool &caps, bool &done);
+    static void drawKeyboard(String currentText, String promptMsg, int kbMode);
+    static void handleTouch(uint16_t x, uint16_t y, String &currentText, int &kbMode, bool &done);
 };
 
-#endif // MY_KEYBOARD_H
+#endif

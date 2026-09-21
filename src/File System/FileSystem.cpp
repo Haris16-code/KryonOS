@@ -1,6 +1,7 @@
 #include "FileSystem.h"
+#include "boards/Board.h"
 
-SPIClass sdSPI(HSPI);
+fs::FS* FileSystem::_fs = nullptr;
 
 bool FileSystem::init() {
     bool success = true;
@@ -14,128 +15,108 @@ bool FileSystem::init() {
         if (!LittleFS.exists("/apps")) LittleFS.mkdir("/apps");
     }
 
-    // Initialize dedicated SPI bus for SD Card (HSPI pins: SCK=14, MISO=26, MOSI=13, CS=15)
-    sdSPI.begin(14, 26, 13, 15);
-    
-    // Initialize SD Card
-    if (!SD.begin(15, sdSPI, 4000000)) {
-        Serial.println("SD Card Mount Failed");
+    _fs = initSD();
+
+    if(_fs == nullptr){
+        Serial.println("SD Mount Failed");
         success = false;
-    } else {
-        Serial.println("SD Card Mount Successful");
-    }
+    };
 
     return success;
 }
 
-String FileSystem::readTextFile(const char* path) {
-    if (path == nullptr) return "";
-    
-    fs::FS* targetFS = nullptr;
-    const char* relPath = "";
-    if (strncmp(path, "/sd/", 4) == 0) {
-        targetFS = &SD;
-        relPath = path + 3;
-    } else if (strncmp(path, "/local/", 7) == 0) {
-        targetFS = &LittleFS;
-        relPath = path + 6;
-    } else {
-        return ""; // Unknown prefix
+FSPath FileSystem::resolve(const char* path) {
+    FSPath res;
+    if (path == nullptr) return res;
+
+    String cleanPath = sanitizePath(path);
+
+    if (cleanPath.startsWith("/sd/") || cleanPath == "/sd") {
+        if (_fs == nullptr) return res; // SD não montado
+        res.fs = _fs;
+        res.relPath = cleanPath.substring(3);
+    } else if (cleanPath.startsWith("/local/") || cleanPath == "/local") {
+        res.fs = &LittleFS;
+        res.relPath = cleanPath.substring(6);
     }
-    
-    if (strlen(relPath) == 0) relPath = "/";
-    
-    File file = targetFS->open(relPath);
-    if (!file || file.isDirectory()) {
-        return "";
+
+    if (res.fs != nullptr && res.relPath.length() == 0) {
+        res.relPath = "/";
     }
+
+    return res;
+}
+
+size_t FileSystem::readBinaryFile(const char* path, uint8_t* buffer, size_t maxLen) {
+    if (path == nullptr || buffer == nullptr || maxLen == 0) return 0;
     
-    size_t size = file.size();
-    if (size == 0) {
-        file.close();
-        return "";
-    }
-    
-    // Pre-allocate String to prevent massive heap fragmentation
-    String content;
-    if (!content.reserve(size)) {
-        Serial.println("Memory allocation failed for reading file.");
-        file.close();
-        return "";
-    }
-    
-    // Read in 512-byte chunks
-    uint8_t buffer[512];
-    while (file.available()) {
-        size_t bytesRead = file.read(buffer, sizeof(buffer));
-        for (size_t i = 0; i < bytesRead; i++) {
-            content += (char)buffer[i];
+    return withFile(path, FILE_READ, [buffer, maxLen](File& f) {
+        if (f.isDirectory()) return (size_t)0;
+        
+        size_t fileSize = f.size();
+        if (fileSize > maxLen) {
+            fileSize = maxLen; // Limita ao buffer disponível
         }
-    }
+        
+        size_t bytesRead = f.read(buffer, fileSize);
+        return bytesRead;
+    });
+}
+
+bool FileSystem::writeBinaryFile(const char* path, const uint8_t* data, size_t len) {
+    if (path == nullptr || data == nullptr || len == 0) return false;
     
-    file.close();
-    return content;
+    return withFile(path, FILE_WRITE, [data, len](File& f) {
+        size_t written = f.write(data, len);
+        return written == len;
+    });
+}
+
+String FileSystem::readTextFile(const char* path) {
+    return withFile(path, FILE_READ, [](File& f) {
+        if (f.isDirectory() || f.size() == 0) return String("");
+        
+        String content;
+        if (!content.reserve(f.size())) return String("");
+
+        uint8_t buffer[512];
+        while (f.available()) {
+            size_t bytesRead = f.read(buffer, sizeof(buffer));
+            for (size_t i = 0; i < bytesRead; i++) {
+                content += (char)buffer[i];
+            }
+        }
+        return content;
+    });
 }
 
 bool FileSystem::writeTextFile(const char* path, const char* content) {
-    if (path == nullptr || content == nullptr) return false;
-    
-    fs::FS* targetFS = nullptr;
-    const char* relPath = "";
-    if (strncmp(path, "/sd/", 4) == 0) {
-        targetFS = &SD;
-        relPath = path + 3;
-    } else if (strncmp(path, "/local/", 7) == 0) {
-        targetFS = &LittleFS;
-        relPath = path + 6;
-    } else {
-        return false;
+    if (content == nullptr) return false;
+    return withFile(path, FILE_WRITE, [content](File& f) {
+        size_t written = f.print(content);
+        return written > 0 || strlen(content) == 0;
+    });
+}
+
+String FileSystem::sanitizePath(const char* path) {
+    String cleanPath = String(path);
+        
+    while (cleanPath.length() > 1 && cleanPath.endsWith("/")) {
+        cleanPath.remove(cleanPath.length() - 1);
     }
-    
-    if (strlen(relPath) == 0) relPath = "/";
-    
-    File file = targetFS->open(relPath, FILE_WRITE);
-    if (!file) {
-        return false;
-    }
-    
-    if (file.print(content)) {
-        file.close();
-        return true;
-    } else {
-        file.close();
-        return false;
-    }
+
+    return cleanPath;
 }
 
 bool FileSystem::exists(const char* path) {
-    if (path == nullptr) return false;
-    
-    if (strncmp(path, "/sd/", 4) == 0) {
-        return SD.exists(path + 3);
-    } else if (strncmp(path, "/local/", 7) == 0) {
-        return LittleFS.exists(path + 6);
-    }
-    return false;
+    FSPath p = resolve(path);
+    return p.isValid() ? p.fs->exists(p.relPath.c_str()) : false;
 }
 
 bool FileSystem::deleteFile(const char* path) {
-    if (path == nullptr) return false;
-    
-    fs::FS* targetFS = nullptr;
-    const char* relPath = "";
-    if (strncmp(path, "/sd/", 4) == 0) {
-        targetFS = &SD;
-        relPath = path + 3;
-    } else if (strncmp(path, "/local/", 7) == 0) {
-        targetFS = &LittleFS;
-        relPath = path + 6;
-    } else {
-        return false;
-    }
-    
-    if (strlen(relPath) == 0) return false;
-    return targetFS->remove(relPath);
+    FSPath p = resolve(path);
+    if (!p.isValid() || p.relPath == "/") return false;
+    return p.fs->remove(p.relPath.c_str());
 }
 
 bool FileSystem::formatLittleFS() {
@@ -145,230 +126,435 @@ bool FileSystem::formatLittleFS() {
 
 int FileSystem::listDir(const char* dirPath, String* resultFiles, int maxFiles) {
     if (dirPath == nullptr || resultFiles == nullptr) return 0;
-    
+
+    // 1. Sanitização inicial usando sanitizePath
+    String cleanPath = sanitizePath(dirPath);
+
     fs::FS* targetFS = nullptr;
-    const char* relativePath = "";
-    if (strncmp(dirPath, "/sd", 3) == 0) {
-        targetFS = &SD;
-        relativePath = dirPath + 3; // e.g. "" or "/" or "/apps"
-        if (strlen(relativePath) == 0) relativePath = "/";
-    } else if (strncmp(dirPath, "/local", 6) == 0) {
+    String relPath;
+
+    // 2. Identificação da rota e seleção do sistema de arquivos
+    if (cleanPath.startsWith("/sd/") || cleanPath == "/sd") {
+        if (_fs == nullptr) return 0; // Proteção contra ponteiro nulo do SD
+        targetFS = _fs;
+        relPath = cleanPath.substring(3); // Corta "/sd" (ex: "/sd/apps" -> "/apps")
+    } else if (cleanPath.startsWith("/local/") || cleanPath == "/local") {
         targetFS = &LittleFS;
-        relativePath = dirPath + 6;
-        if (strlen(relativePath) == 0) relativePath = "/";
+        relPath = cleanPath.substring(6); // Corta "/local" (ex: "/local/apps" -> "/apps")
     } else {
-        return 0;
+        return 0; // Prefixo desconhecido
     }
-    
-    File dir = targetFS->open(relativePath);
+
+    if (relPath.length() == 0) relPath = "/";
+
+    // 3. Abertura do diretório
+    File dir = targetFS->open(relPath.c_str());
     if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
         return 0;
     }
 
     int count = 0;
     File file = dir.openNextFile();
+
+    // 4. Varredura dos arquivos/pastas
     while (file && count < maxFiles) {
-        String name = file.name();
-        // Return full absolute path e.g. /sd/apps/file.js
-        String fullPath = String(dirPath);
-        if (!fullPath.endsWith("/")) fullPath += "/";
-        fullPath += name;
-        resultFiles[count++] = fullPath;
-        
+        String name = String(file.name());
+
+        // Extrai apenas o nome base caso o FatFs retorne caminhos pai
+        int lastSlash = name.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            name = name.substring(lastSlash + 1);
+        }
+
+        // Ignora arquivos do sistema e arquivos ocultos
+        if (name.length() > 0 && !name.startsWith(".") && name != "System Volume Information") {
+            String fullPath = cleanPath;
+            if (!fullPath.endsWith("/")) fullPath += "/";
+            fullPath += name;
+
+            resultFiles[count++] = fullPath;
+        }
+
+        // Fecha o handler do arquivo para evitar vazamento de memória no FatFs
+        file.close();
         file = dir.openNextFile();
     }
+
+    dir.close();
     return count;
 }
 
 int FileSystem::listDirectory(const char* dirPath, FileEntry* entries, int maxEntries) {
-    fs::FS* targetFS = nullptr;
-    const char* relativePath = "";
+    if (dirPath == nullptr || entries == nullptr) return 0;
 
-    if (strncmp(dirPath, "/sd", 3) == 0) {
-        targetFS = &SD;
-        relativePath = dirPath + 3; 
-        if (strlen(relativePath) == 0) relativePath = "/";
-    } else if (strncmp(dirPath, "/local", 6) == 0) {
+    // 1. Sanitização inicial usando sanitizePath
+    String cleanPath = sanitizePath(dirPath);
+
+    fs::FS* targetFS = nullptr;
+    String relPath;
+
+    // 2. Identificação da rota e seleção do sistema de arquivos
+    if (cleanPath.startsWith("/sd/") || cleanPath == "/sd") {
+        if (_fs == nullptr) return 0; // Proteção contra ponteiro nulo do SD
+        targetFS = _fs;
+        relPath = cleanPath.substring(3); // Corta "/sd" (ex: "/sd/apps" -> "/apps")
+    } else if (cleanPath.startsWith("/local/") || cleanPath == "/local") {
         targetFS = &LittleFS;
-        relativePath = dirPath + 6;
-        if (strlen(relativePath) == 0) relativePath = "/";
+        relPath = cleanPath.substring(6); // Corta "/local" (ex: "/local/apps" -> "/apps")
     } else {
-        return 0;
+        return 0; // Prefixo desconhecido
     }
-    
-    File dir = targetFS->open(relativePath);
+
+    if (relPath.length() == 0) relPath = "/";
+
+    // 3. Abertura do diretório
+    File dir = targetFS->open(relPath.c_str());
     if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
         return 0;
     }
 
     int count = 0;
     File file = dir.openNextFile();
+
+    // 4. Varredura dos arquivos/pastas
     while (file && count < maxEntries) {
-        entries[count].name = String(file.name());
-        
-        String fullPath = String(dirPath);
-        if (!fullPath.endsWith("/")) fullPath += "/";
-        fullPath += entries[count].name;
-        
-        entries[count].path = fullPath;
-        entries[count].isDir = file.isDirectory();
-        
-        count++;
+        String name = String(file.name());
+
+        // Extrai apenas o nome base caso o FatFs retorne caminhos pai
+        int lastSlash = name.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            name = name.substring(lastSlash + 1);
+        }
+
+        // Ignora arquivos do sistema e arquivos ocultos
+        if (name.length() > 0 && !name.startsWith(".") && name != "System Volume Information") {
+            entries[count].name = name;
+
+            String fullPath = cleanPath;
+            if (!fullPath.endsWith("/")) fullPath += "/";
+            fullPath += name;
+
+            entries[count].path = fullPath;
+            entries[count].isDir = file.isDirectory();
+
+            count++;
+        }
+
+        // Fecha o handler do arquivo para evitar vazamento de memória no FatFs
+        file.close();
         file = dir.openNextFile();
     }
+
+    dir.close();
     return count;
 }
 
 bool FileSystem::readCalData(uint16_t* calData) {
-    if (!LittleFS.exists("/touch_cal_p.bin")) return false;
-    File f = LittleFS.open("/touch_cal_p.bin", FILE_READ);
-    if (!f) return false;
-    if (f.read((uint8_t*)calData, 10) == 10) {
-        f.close();
-        return true;
+    Serial.println("[FileSystem] Iniciando leitura da calibracao do touch...");
+
+    // 1. Protecao contra ponteiro nulo
+    if (calData == nullptr) {
+        Serial.println("[FileSystem] ERRO: Ponteiro calData e nulo!");
+        return false;
     }
+
+    // 2. Verificacao de existencia do arquivo
+    if (!exists("/local/touch_cal_p.bin")) {
+        Serial.println("[FileSystem] ERRO: Arquivo '/touch_cal_p.bin' nao encontrado.");
+        return false;
+    }
+
+    File f = LittleFS.open("/touch_cal_p.bin", FILE_READ);
+    if (!f) {
+        Serial.println("[FileSystem] ERRO: Falha ao abrir '/touch_cal_p.bin' para leitura.");
+        return false;
+    }
+
+    // 3. Leitura dos 10 bytes (5 valores uint16_t)
+    size_t bytesRead = f.read((uint8_t*)calData, 10);
     f.close();
-    return false;
+
+    if (bytesRead == 10) {
+        Serial.println("[FileSystem] Calibracao lida com sucesso:");
+        Serial.print("  -> X_MIN: "); Serial.println(calData[0]);
+        Serial.print("  -> X_MAX: "); Serial.println(calData[1]);
+        Serial.print("  -> Y_MIN: "); Serial.println(calData[2]);
+        Serial.print("  -> Y_MAX: "); Serial.println(calData[3]);
+        Serial.print("  -> Extra/Param: "); Serial.println(calData[4]);
+        return true;
+    } else {
+        Serial.print("[FileSystem] ERRO: Bytes lidos incorretos. Esperado: 10, Lido: ");
+        Serial.println(bytesRead);
+        return false;
+    }
 }
 
 bool FileSystem::writeCalData(uint16_t* calData) {
+    Serial.println("[FileSystem] Iniciando gravacao da calibracao do touch...");
+
+    // 1. Protecao contra ponteiro nulo
+    if (calData == nullptr) {
+        Serial.println("[FileSystem] ERRO: Ponteiro calData e nulo!");
+        return false;
+    }
+
     File f = LittleFS.open("/touch_cal_p.bin", FILE_WRITE);
-    if (!f) return false;
-    f.write((uint8_t*)calData, 10);
+    if (!f) {
+        Serial.println("[FileSystem] ERRO: Falha ao criar/abrir '/touch_cal_p.bin' para escrita.");
+        return false;
+    }
+
+    // 2. Gravacao dos 10 bytes (5 valores uint16_t)
+    size_t bytesWritten = f.write((uint8_t*)calData, 10);
     f.close();
-    return true;
+
+    if (bytesWritten == 10) {
+        Serial.println("[FileSystem] Calibracao salva com sucesso na Flash:");
+        Serial.print("  -> X_MIN: "); Serial.println(calData[0]);
+        Serial.print("  -> X_MAX: "); Serial.println(calData[1]);
+        Serial.print("  -> Y_MIN: "); Serial.println(calData[2]);
+        Serial.print("  -> Y_MAX: "); Serial.println(calData[3]);
+        Serial.print("  -> Extra/Param: "); Serial.println(calData[4]);
+        return true;
+    } else {
+        Serial.print("[FileSystem] ERRO: Bytes gravados incorretos. Esperado: 10, Gravado: ");
+        Serial.println(bytesWritten);
+        return false;
+    }
 }
 
 bool FileSystem::copyFile(const char* srcPath, const char* dstPath) {
     if (srcPath == nullptr || dstPath == nullptr) return false;
     
+    // 1. Sanitização dos caminhos de origem e destino
+    String cleanSrc = sanitizePath(srcPath);
+    String cleanDst = sanitizePath(dstPath);
+    
+    // 2. Resolução do sistema de arquivos de ORIGEM
     fs::FS* srcFS = nullptr;
-    const char* srcRel = "";
-    if (strncmp(srcPath, "/sd/", 4) == 0) {
-        srcFS = &SD; srcRel = srcPath + 3;
-    } else if (strncmp(srcPath, "/local/", 7) == 0) {
-        srcFS = &LittleFS; srcRel = srcPath + 6;
-    } else return false;
-    
+    String srcRel;
+
+    if (cleanSrc.startsWith("/sd/") || cleanSrc == "/sd") {
+        if (_fs == nullptr) return false; // Proteção se o SD não estiver montado
+        srcFS = _fs;
+        srcRel = cleanSrc.substring(3);
+    } else if (cleanSrc.startsWith("/local/") || cleanSrc == "/local") {
+        srcFS = &LittleFS;
+        srcRel = cleanSrc.substring(6);
+    } else {
+        return false;
+    }
+    if (srcRel.length() == 0) srcRel = "/";
+
+    // 3. Resolução do sistema de arquivos de DESTINO
     fs::FS* dstFS = nullptr;
-    const char* dstRel = "";
-    if (strncmp(dstPath, "/sd/", 4) == 0) {
-        dstFS = &SD; dstRel = dstPath + 3;
-    } else if (strncmp(dstPath, "/local/", 7) == 0) {
-        dstFS = &LittleFS; dstRel = dstPath + 6;
-    } else return false;
+    String dstRel;
 
-    if (strlen(srcRel) == 0) srcRel = "/";
-    if (strlen(dstRel) == 0) dstRel = "/";
+    if (cleanDst.startsWith("/sd/") || cleanDst == "/sd") {
+        if (_fs == nullptr) return false; // Proteção se o SD não estiver montado
+        dstFS = _fs;
+        dstRel = cleanDst.substring(3);
+    } else if (cleanDst.startsWith("/local/") || cleanDst == "/local") {
+        dstFS = &LittleFS;
+        dstRel = cleanDst.substring(6);
+    } else {
+        return false;
+    }
+    if (dstRel.length() == 0) dstRel = "/";
 
-    File srcFile = srcFS->open(srcRel, FILE_READ);
-    if (!srcFile || srcFile.isDirectory()) return false;
+    // 4. Abertura do arquivo de origem
+    File srcFile = srcFS->open(srcRel.c_str(), FILE_READ);
+    if (!srcFile || srcFile.isDirectory()) {
+        if (srcFile) srcFile.close();
+        return false;
+    }
     
-    File dstFile = dstFS->open(dstRel, FILE_WRITE);
+    // 5. Abertura do arquivo de destino
+    File dstFile = dstFS->open(dstRel.c_str(), FILE_WRITE);
     if (!dstFile) {
         srcFile.close();
         return false;
     }
     
-    size_t n;
+    // 6. Cópia em blocos de 512 bytes com verificação de escrita
     uint8_t buf[512];
-    while ((n = srcFile.read(buf, sizeof(buf))) > 0) {
-        dstFile.write(buf, n);
+    size_t bytesRead = 0;
+    bool success = true;
+
+    while ((bytesRead = srcFile.read(buf, sizeof(buf))) > 0) {
+        if (dstFile.write(buf, bytesRead) != bytesRead) {
+            success = false; // Falha na escrita (espaço insuficiente, erro no SD, etc)
+            break;
+        }
     }
     
     srcFile.close();
     dstFile.close();
-    return true;
+    
+    return success;
 }
-
-
 
 #include <mbedtls/md5.h>
 
-static fs::FS* getTargetFS(const char* path, const char*& relPath) {
+fs::FS* FileSystem::getTargetFS(const char* path, String& relPath) {
     if (path == nullptr) return nullptr;
-    if (strncmp(path, "/sd", 3) == 0) {
-        relPath = path + 3;
-        if (strlen(relPath) == 0) relPath = "/";
-        return &SD;
-    } else if (strncmp(path, "/local", 6) == 0) {
-        relPath = path + 6;
-        if (strlen(relPath) == 0) relPath = "/";
+    
+    // 1. Sanitiza o caminho completo
+    String cleanPath = sanitizePath(path);
+    
+    // 2. Identifica a rota e extrai o caminho relativo
+    if (cleanPath.startsWith("/sd/") || cleanPath == "/sd") {
+        if (_fs == nullptr) return nullptr; // Proteção contra ponteiro nulo do SD
+        relPath = cleanPath.substring(3);    // Corta "/sd"
+        if (relPath.length() == 0) relPath = "/";
+        return _fs;
+    } else if (cleanPath.startsWith("/local/") || cleanPath == "/local") {
+        relPath = cleanPath.substring(6);    // Corta "/local"
+        if (relPath.length() == 0) relPath = "/";
         return &LittleFS;
     }
-    return nullptr;
+    
+    return nullptr; // Prefixo desconhecido
 }
 
 int FileSystem::countFilesInDir(const char* dirPath) {
-    const char* relPath = "";
+    if (dirPath == nullptr) return 0;
+
+    // 1. Obtém o FS alvo e o caminho relativo sanitizado
+    String relPath;
     fs::FS* targetFS = getTargetFS(dirPath, relPath);
     if (!targetFS) return 0;
-    File dir = targetFS->open(relPath);
-    if (!dir || !dir.isDirectory()) return 0;
+
+    // 2. Abertura do diretório
+    File dir = targetFS->open(relPath.c_str());
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
+        return 0;
+    }
+
     int count = 0;
     File f = dir.openNextFile();
+
+    // 3. Varredura e contagem
     while (f) {
-        if (!f.isDirectory()) {
-            count++;
-        } else {
-            String subPath = String(dirPath);
-            if (!subPath.endsWith("/")) subPath += "/";
-            subPath += f.name();
-            count += countFilesInDir(subPath.c_str());
+        String name = String(f.name());
+
+        // Garante a extração apenas do nome base (evita caminhos duplicados no FatFs)
+        int lastSlash = name.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            name = name.substring(lastSlash + 1);
         }
+
+        // Ignora pastas/arquivos ocultos e de sistema
+        if (name.length() > 0 && !name.startsWith(".") && name != "System Volume Information") {
+            if (!f.isDirectory()) {
+                count++;
+            } else {
+                // Monta o caminho da subpasta mantendo a raiz do caminho original (/sd ou /local)
+                String cleanDir = sanitizePath(dirPath);
+                String subPath = cleanDir + "/" + name;
+                
+                // FECHA o handler do arquivo atual ANTES da recursão para economizar descritores no FatFs
+                f.close();
+                
+                count += countFilesInDir(subPath.c_str());
+                
+                // Abre o próximo arquivo do diretório pai após retornar da recursão
+                f = dir.openNextFile();
+                continue;
+            }
+        }
+
+        // Fecha o handler do arquivo/pasta iterado
+        f.close();
         f = dir.openNextFile();
     }
+
+    dir.close();
     return count;
 }
 
 bool FileSystem::copyDirectory(const char* srcDir, const char* destDir, void (*progressCb)(int current, int total)) {
     if (!srcDir || !destDir) return false;
-    mkdir(destDir);
-    
-    const char* relPath = "";
-    fs::FS* srcFS = getTargetFS(srcDir, relPath);
+
+    // 1. Sanitização dos caminhos de origem e destino
+    String cleanSrc = sanitizePath(srcDir);
+    String cleanDst = sanitizePath(destDir);
+
+    // Cria o diretório de destino (caso não exista)
+    mkdir(cleanDst.c_str());
+
+    // 2. Obtém o sistema de arquivos e o caminho relativo da origem
+    String relPath;
+    fs::FS* srcFS = getTargetFS(cleanSrc.c_str(), relPath);
     if (!srcFS) return false;
-    
-    File dir = srcFS->open(relPath);
-    if (!dir || !dir.isDirectory()) return false;
-    
+
+    File dir = srcFS->open(relPath.c_str());
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
+        return false;
+    }
+
+    // 3. Controle seguro de estado para chamadas recursivas
     static int copiedFiles = 0;
     static int totalFiles = 0;
-    static bool isTopLevel = true;
-    
-    if (isTopLevel) {
+    static int recursionDepth = 0;
+
+    if (recursionDepth == 0) {
         copiedFiles = 0;
-        totalFiles = countFilesInDir(srcDir);
+        totalFiles = countFilesInDir(cleanSrc.c_str());
         if (totalFiles == 0) totalFiles = 1;
-        isTopLevel = false;
     }
-    
+
+    recursionDepth++; // Incrementa o nível da recursão
+
     File file = dir.openNextFile();
     while (file) {
-        String fileName = file.name();
-        String srcFilePath = String(srcDir);
-        if (!srcFilePath.endsWith("/")) srcFilePath += "/";
-        srcFilePath += fileName;
-        
-        String dstFilePath = String(destDir);
-        if (!dstFilePath.endsWith("/")) dstFilePath += "/";
-        dstFilePath += fileName;
-        
-        if (file.isDirectory()) {
-            bool wasTopLevel = isTopLevel;
-            isTopLevel = false;
-            copyDirectory(srcFilePath.c_str(), dstFilePath.c_str(), progressCb);
-            isTopLevel = wasTopLevel;
-        } else {
-            copyFile(srcFilePath.c_str(), dstFilePath.c_str());
-            copiedFiles++;
-            if (progressCb) progressCb(copiedFiles, totalFiles);
-            yield();
+        String fileName = String(file.name());
+
+        // Extrai apenas o nome base (evita caminhos pai duplicados do FatFs)
+        int lastSlash = fileName.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            fileName = fileName.substring(lastSlash + 1);
         }
+
+        // Ignora pastas/arquivos ocultos e de sistema
+        if (fileName.length() > 0 && !fileName.startsWith(".") && fileName != "System Volume Information") {
+            String srcFilePath = cleanSrc + "/" + fileName;
+            String dstFilePath = cleanDst + "/" + fileName;
+
+            if (file.isDirectory()) {
+                // FECHA o handler do arquivo atual antes da recursão para economizar descritores de arquivo no FatFs
+                file.close();
+
+                copyDirectory(srcFilePath.c_str(), dstFilePath.c_str(), progressCb);
+
+                // Abre o próximo arquivo do diretório após o retorno da recursão
+                file = dir.openNextFile();
+                continue;
+            } else {
+                copyFile(srcFilePath.c_str(), dstFilePath.c_str());
+                copiedFiles++;
+                if (progressCb) progressCb(copiedFiles, totalFiles);
+                yield(); // Evita acionamento do Watchdog Timer no ESP32
+            }
+        }
+
+        file.close(); // Libera handler do FatFs
         file = dir.openNextFile();
     }
-    
-    isTopLevel = true;
+
+    dir.close();
+
+    recursionDepth--; // Decrementa ao sair do nível atual
+    if (recursionDepth == 0) {
+        // Reseta os contadores estáticos ao finalizar a cópia completa
+        copiedFiles = 0;
+        totalFiles = 0;
+    }
+
     return true;
 }
 
@@ -399,96 +585,88 @@ String FileSystem::parseJsonValue(const String& json, const char* key) {
 }
 
 bool FileSystem::mkdir(const char* path) {
-    const char* relPath = "";
+    if (path == nullptr) return false;
+
+    // 1. Obtém o sistema de arquivos e o caminho relativo seguro e sanitizado
+    String relPath;
     fs::FS* targetFS = getTargetFS(path, relPath);
     if (!targetFS) return false;
-    return targetFS->mkdir(relPath);
+
+    // Se o caminho for a raiz ou vazio, não há diretório a ser criado
+    if (relPath.isEmpty() || relPath == "/") return true;
+
+    // 2. Se o diretório final já existe, retorna sucesso imediatamente
+    if (targetFS->exists(relPath.c_str())) return true;
+
+    // 3. Criação recursiva de diretórios pai (mkdir -p)
+    int start = 1;
+    int end = relPath.indexOf('/', start);
+
+    while (end != -1) {
+        String currentPath = relPath.substring(0, end);
+        if (!currentPath.isEmpty() && !targetFS->exists(currentPath.c_str())) {
+            if (!targetFS->mkdir(currentPath.c_str())) {
+                return false; // Falha na criação de um diretório pai
+            }
+        }
+        start = end + 1;
+        end = relPath.indexOf('/', start);
+    }
+
+    // 4. Cria o diretório final
+    return targetFS->mkdir(relPath.c_str());
 }
 
 bool FileSystem::rmdir(const char* path) {
-    const char* relPath = "";
-    fs::FS* targetFS = getTargetFS(path, relPath);
-    if (!targetFS) return false;
-    return targetFS->rmdir(relPath);
+    FSPath p = resolve(path);
+    if (!p.isValid() || p.relPath == "/") return false;
+    return p.fs->rmdir(p.relPath.c_str());
 }
 
 bool FileSystem::isDirectory(const char* path) {
-    const char* relPath = "";
-    fs::FS* targetFS = getTargetFS(path, relPath);
-    if (!targetFS) return false;
-    File file = targetFS->open(relPath);
-    if (!file) return false;
-    bool isDir = file.isDirectory();
-    file.close();
-    return isDir;
+    return withFile(path, FILE_READ, [](File& f) { return f.isDirectory(); });
 }
 
 bool FileSystem::isFile(const char* path) {
-    const char* relPath = "";
-    fs::FS* targetFS = getTargetFS(path, relPath);
-    if (!targetFS) return false;
-    File file = targetFS->open(relPath);
-    if (!file) return false;
-    bool isFile = !file.isDirectory();
-    file.close();
-    return isFile;
+    return withFile(path, FILE_READ, [](File& f) { return !f.isDirectory(); });
 }
 
 bool FileSystem::appendTextFile(const char* path, const char* content) {
-    const char* relPath = "";
-    fs::FS* targetFS = getTargetFS(path, relPath);
-    if (!targetFS) return false;
-    File file = targetFS->open(relPath, FILE_APPEND);
-    if (!file) return false;
-    bool res = file.print(content);
-    file.close();
-    return res;
+    if (content == nullptr) return false;
+    return withFile(path, FILE_APPEND, [content](File& f) {
+        size_t written = f.print(content);
+        return written > 0 || strlen(content) == 0;
+    });
 }
 
 bool FileSystem::renameFile(const char* pathFrom, const char* pathTo) {
-    const char* relPathFrom = "";
-    fs::FS* targetFSFrom = getTargetFS(pathFrom, relPathFrom);
-    const char* relPathTo = "";
-    fs::FS* targetFSTo = getTargetFS(pathTo, relPathTo);
-    
-    // Cannot rename across different file systems natively via targetFS->rename
-    if (!targetFSFrom || !targetFSTo || targetFSFrom != targetFSTo) return false;
-    
-    return targetFSFrom->rename(relPathFrom, relPathTo);
+    FSPath src = resolve(pathFrom);
+    FSPath dst = resolve(pathTo);
+
+    // Garante que ambos são válidos e estão no mesmo sistema de arquivos
+    if (!src.isValid() || !dst.isValid() || src.fs != dst.fs) return false;
+
+    return src.fs->rename(src.relPath.c_str(), dst.relPath.c_str());
 }
 
 size_t FileSystem::getFileSize(const char* path) {
-    const char* relPath = "";
-    fs::FS* targetFS = getTargetFS(path, relPath);
-    if (!targetFS) return 0;
-    File file = targetFS->open(relPath);
-    if (!file) return 0;
-    size_t size = file.size();
-    file.close();
-    return size;
+    return withFile(path, FILE_READ, [](File& f) { return f.size(); });
 }
 
 time_t FileSystem::getLastModified(const char* path) {
-    const char* relPath = "";
-    fs::FS* targetFS = getTargetFS(path, relPath);
-    if (!targetFS) return 0;
-    File file = targetFS->open(relPath);
-    if (!file) return 0;
-    time_t mod = file.getLastWrite();
-    file.close();
-    return mod;
+    return withFile(path, FILE_READ, [](File& f) { return f.getLastWrite(); });
 }
 
 size_t FileSystem::getTotalSpace(const char* drive) {
-    if (strncmp(drive, "/sd", 3) == 0) return SD.totalBytes();
-    if (strncmp(drive, "/local", 6) == 0) return LittleFS.totalBytes();
-    return 0;
+    FSPath p = resolve(drive);
+    if (!p.isValid()) return 0;
+    return (p.fs == &LittleFS) ? LittleFS.totalBytes() : getSDTotalBytes();
 }
 
 size_t FileSystem::getUsedSpace(const char* drive) {
-    if (strncmp(drive, "/sd", 3) == 0) return SD.usedBytes();
-    if (strncmp(drive, "/local", 6) == 0) return LittleFS.usedBytes();
-    return 0;
+    FSPath p = resolve(drive);
+    if (!p.isValid()) return 0;
+    return (p.fs == &LittleFS) ? LittleFS.usedBytes() : getSDUsedBytes();
 }
 
 size_t FileSystem::getFreeSpace(const char* drive) {
@@ -498,44 +676,63 @@ size_t FileSystem::getFreeSpace(const char* drive) {
 }
 
 String FileSystem::getFileMD5(const char* path) {
-    const char* relPath = "";
+    if (path == nullptr) return "";
+
+    // 1. Obtém o sistema de arquivos e o caminho relativo sanitizado
+    String relPath;
     fs::FS* targetFS = getTargetFS(path, relPath);
     if (!targetFS) return "";
-    File file = targetFS->open(relPath, FILE_READ);
-    if (!file || file.isDirectory()) return "";
 
+    // 2. Abertura do arquivo para leitura
+    File file = targetFS->open(relPath.c_str(), FILE_READ);
+    if (!file || file.isDirectory()) {
+        if (file) file.close();
+        return "";
+    }
+
+    // 3. Inicialização do contexto Mbed TLS MD5
     mbedtls_md5_context ctx;
     mbedtls_md5_init(&ctx);
-    mbedtls_md5_starts(&ctx);
+    mbedtls_md5_starts_ret(&ctx); // OBRIGATÓRIO: Inicializa os registradores do hash
 
     uint8_t buffer[512];
-    size_t len;
+    size_t len = 0;
+
+    // 4. Leitura em blocos para não sobrecarregar a RAM do ESP32
     while ((len = file.read(buffer, sizeof(buffer))) > 0) {
         mbedtls_md5_update(&ctx, buffer, len);
     }
     file.close();
 
+    // 5. Finaliza o cálculo e gera os 16 bytes do hash
     uint8_t hash[16];
     mbedtls_md5_finish(&ctx, hash);
     mbedtls_md5_free(&ctx);
 
+    // 6. Converte para representação hexadecimal (32 caracteres)
     String hexHash = "";
+    hexHash.reserve(32); // Evita fragmentação da Heap alocando espaço antecipadamente
+
     for (int i = 0; i < 16; i++) {
         char buf[3];
         sprintf(buf, "%02x", hash[i]);
         hexHash += buf;
     }
+
     return hexHash;
 }
 
 bool FileSystem::mountSD() {
-    return SD.begin(SD_CS_PIN, sdSPI, 4000000);
+        _fs = initSD(); // Atribui o ponteiro para o SD
+        return _fs != nullptr;
 }
 
 void FileSystem::unmountSD() {
-    SD.end();
+    deinitSD();
+    _fs = nullptr;
 }
 
 bool FileSystem::formatSD() {
-    return false; // Not natively supported on standard Arduino core without custom FAT commands
+    // A API padrão do Arduino ESP32 não possui suporte nativo direto a formatação FAT em tempo de execução
+    return false;
 }

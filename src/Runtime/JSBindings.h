@@ -2,23 +2,22 @@
 #define JS_BINDINGS_H
 
 #include <Arduino.h>
-#include "duktape.h"
-#include <TFT_eSPI.h>
+#include "Runtime/duktape.h"
+#include "boards/Board.h"
 
 class JSBindings {
 public:
-    static void init(duk_context *ctx, TFT_eSPI *tft);
+    static void init(duk_context *ctx);
 
 private:
-    static TFT_eSPI *tftInstance;
     static TFT_eSprite *tftSprite;
+    static bool useSprite;
 
     // Double Buffering
     static duk_ret_t js_createSprite(duk_context *ctx);
     static duk_ret_t js_deleteSprite(duk_context *ctx);
     static duk_ret_t js_pushSprite(duk_context *ctx);
     static duk_ret_t js_bindSprite(duk_context *ctx);
-    static bool useSprite;
 
     // GPIO Bindings
     static duk_ret_t js_pinMode(duk_context *ctx);
@@ -56,6 +55,12 @@ private:
 
     // Touch Input
     static duk_ret_t js_getTouch(duk_context *ctx);
+
+    // Keyboard Input
+    static duk_ret_t js_getKey(duk_context *ctx);
+    static duk_ret_t js_getKeyInput(duk_context *ctx);
+    static duk_ret_t js_isKeyPressed(duk_context *ctx);
+    static duk_ret_t js_getChar(duk_context *ctx);
 
     // System Utilities
     static duk_ret_t js_millis(duk_context *ctx);
