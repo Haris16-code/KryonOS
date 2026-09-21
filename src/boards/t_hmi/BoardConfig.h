@@ -26,10 +26,10 @@
 #define TOUCHSCREEN_IRQ_PIN  9
 
 // --- Calibração de Hardware do Touch (Valores RAW ADC) ---
-#define TOUCH_X_MIN 800
-#define TOUCH_X_MAX 3570
-#define TOUCH_Y_MIN 350
-#define TOUCH_Y_MAX 3850
+#define TOUCH_X_MIN 290
+#define TOUCH_X_MAX 1500
+#define TOUCH_Y_MIN 215
+#define TOUCH_Y_MAX 1800
 
 // --- Pinos do Cartão SD ---
 #define SD_MISO_PIN 13
