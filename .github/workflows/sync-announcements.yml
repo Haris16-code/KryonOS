@@ -9,29 +9,18 @@ jobs:
     if: github.event.discussion.category.name == 'Announcements'
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Install Markdown Parser
-        run: npm install -g marked
-
-      - name: Convert Markdown & Publish to Open Collective
+      - name: Post Update to Open Collective
         env:
           OC_TOKEN: ${{ secrets.OPENCOLLECTIVE_PERSONAL_TOKEN }}
           TITLE: ${{ github.event.discussion.title }}
-          RAW_BODY: ${{ github.event.discussion.body }}
+          BODY_HTML: ${{ github.event.discussion.body }}
           URL: ${{ github.event.discussion.html_url }}
           SLUG: "kryonos" # Your Open Collective slug
         run: |
-          # 1. Convert GitHub Discussion Markdown to formatted HTML
-          BODY_HTML=$(echo "$RAW_BODY" | marked)
-
-          # 2. Add an original discussion link header
+          # 1. Add an original discussion link header to your HTML body
           FINAL_HTML="<p><em>Originally posted on <a href='${URL}'>GitHub Discussions</a></em></p><hr/>${BODY_HTML}"
 
-          # 3. Construct GraphQL query safely via jq
+          # 2. Construct GraphQL query safely via jq
           GRAPHQL_PAYLOAD=$(jq -n \
             --arg slug "$SLUG" \
             --arg title "$TITLE" \
@@ -49,7 +38,7 @@ jobs:
               }
             }')
 
-          # 4. Send request to Open Collective API
+          # 3. Send request to Open Collective API
           RESPONSE=$(curl -s -X POST https://api.opencollective.com/graphql/v2 \
             -H "Content-Type: application/json" \
             -H "Personal-Token: $OC_TOKEN" \
@@ -57,7 +46,7 @@ jobs:
 
           echo "Response: $RESPONSE"
 
-          # Fail step if API returned errors
+          # 4. Fail step if API returned errors
           if echo "$RESPONSE" | grep -q '"errors"'; then
             echo "Failed to post update to Open Collective"
             exit 1
