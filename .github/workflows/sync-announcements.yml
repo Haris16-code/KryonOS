@@ -1,0 +1,41 @@
+name: Sync Announcement to Open Collective
+
+on:
+  discussion:
+    types: [created]
+
+jobs:
+  publish_update:
+    # Only run if the discussion is categorized under Announcements
+    if: github.event.discussion.category.name == 'Announcements'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post Update to Open Collective
+        env:
+          OC_TOKEN: ${{ secrets.OPENCOLLECTIVE_PERSONAL_TOKEN }}
+          TITLE: ${{ github.event.discussion.title }}
+          BODY: ${{ github.event.discussion.body }}
+          SLUG: "kryonos" # Replace with your collective's exact URL slug
+        run: |
+          # Format JSON payload safely with jq
+          GRAPHQL_PAYLOAD=$(jq -n \
+            --arg slug "$SLUG" \
+            --arg title "$TITLE" \
+            --arg html "<p>Originally posted on <a href='${{ github.event.discussion.html_url }}'>GitHub Discussions</a>:</p><br/>$(echo "$BODY" | sed -e 's/"/\\"/g')" \
+            '{
+              query: "mutation CreateAndPublishUpdate($update: UpdateCreateInput!) { createUpdate(update: $update) { id title isPrivate } }",
+              variables: {
+                update: {
+                  account: { slug: $slug },
+                  title: $title,
+                  html: $html,
+                  isPrivate: false,
+                  makePublicOn: null
+                }
+              }
+            }')
+
+          curl -X POST https://api.opencollective.com/graphql/v2 \
+            -H "Content-Type: application/json" \
+            -H "Personal-Token: $OC_TOKEN" \
+            -d "$GRAPHQL_PAYLOAD"
