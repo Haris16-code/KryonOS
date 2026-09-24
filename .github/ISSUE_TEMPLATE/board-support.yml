@@ -1,0 +1,22 @@
+name: Board Support Request
+description: Request support for a new development board or hardware.
+title: "[Board Support]: "
+labels:
+  - "Board Support"
+body:
+  - type: input
+    id: board
+    attributes:
+      label: Board Name
+      description: What board would you like KryonOS to support?
+      placeholder: ESP32-S3 DevKitC-1
+    validations:
+      required: true
+
+  - type: textarea
+    id: details
+    attributes:
+      label: Board Details
+      description: Provide the MCU, specifications, and any useful links.
+    validations:
+      required: true
