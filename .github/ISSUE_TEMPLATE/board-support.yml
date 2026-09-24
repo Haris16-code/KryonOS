@@ -9,7 +9,7 @@ body:
     attributes:
       label: Board Name
       description: What board would you like KryonOS to support?
-      placeholder: ESP32-S3 DevKitC-1
+      placeholder: e.g. ESP32-S3 DevKitC-1
     validations:
       required: true
 
