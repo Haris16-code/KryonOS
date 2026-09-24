@@ -106,6 +106,12 @@ pio run -t upload
 * **Expanded Board Support:** Future updates will bring support for a wider variety of microcontrollers and ESP32 variants.
 * **More Hardware APIs:** Continuous expansion of the JavaScript API to expose more low-level hardware features (e.g., Bluetooth, I2C, SPI sensors, advanced PWM, and deep sleep).
 
+## Support KryonOS
+
+If you find KryonOS useful and want to support its development, you can contribute toward new hardware, testing, and support for additional boards.
+
+[![Support KryonOS](https://img.shields.io/badge/Support-KryonOS-orange?style=for-the-badge&logo=heart&logoColor=white)](https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0)
+
 ## License
 
 KryonOS is licensed under the [GNU General Public License v3.0](./LICENSE).
