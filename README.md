@@ -19,7 +19,7 @@ KryonOS is an **open-source**, lightweight, high-performance **GUI** Operating S
 * **Multitasking Feel:** Launch, suspend, and switch between utility apps, games, and hardware monitors.
 
 ## Hardware Needed
-
+Want your board supported in KryonOS? [Request board support here](https://github.com/Haris16-code/KryonOS/issues/new?template=board-support.yml).
 * **ESP32 Development Boards** (Supported: ESP32 WROOM-32, ESP32-S2, ESP32-S3, ESP32-C3)
 * **ILI9341 2.8" TFT Display** (SPI interface with XPT2046 Touch Controller)
 * **MicroSD Card Module** (SPI interface)
