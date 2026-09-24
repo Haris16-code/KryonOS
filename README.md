@@ -1,13 +1,10 @@
 # KryonOS
 KryonOS is an **open-source**, lightweight, high-performance **GUI** Operating System and JavaScript App Runtime designed specifically for the ESP32 microcontroller. It provides a complete desktop-like experience on embedded devices, featuring an integrated JS engine (Duktape) for executing standalone JavaScript applications, double-buffered graphics for smooth 2D/3D rendering, an App Store, file management, and direct hardware API access.
 
-| Multiple Devices Running KryonOS | M5Stack Cardputer | CYD (Cheap Yellow Display) | LilyGO T-HMI |
-| :---: | :---: | :---: | :---: |
-| <img src="Documentation/assets/imgs/Devices.jpg" width="220" alt="Hardware Overview"/> | <img src="Documentation/assets/imgs/Cardputer-V1.1.jpg" width="220" alt="Cardputer"/> | <img src="Documentation/assets/imgs/CYD2432S028R.jpg" width="220" alt="CYD"/> | <img src="Documentation/assets/imgs/Lilygo-T-HMI.jpg" width="220" alt="T-HMI"/> |
-
-<p align="center">
-  <img src="Documentation/assets/imgs/kryonos-home.jpg" alt="KryonOS Home Interface" width="600"/>
-</p>
+| ESP32 + ILI9341 2.8" (Touch) | Multiple Devices (Lab Overview) | M5Stack Cardputer | CYD (Cheap Yellow Display) | LilyGO T-HMI |
+| :---: | :---: | :---: | :---: | :---: |
+| **Stable** 🟢 | *Experimental* 🧪 | *Experimental* 🧪 | *Experimental* 🧪 | *Experimental* 🧪 |
+| <img src="Documentation/assets/imgs/kryonos-home.jpg" width="220" alt="ESP32 ILI9341 Stable"/> | <img src="Documentation/assets/imgs/Devices.jpg" width="220" alt="Hardware Overview"/> | <img src="Documentation/assets/imgs/Cardputer-V1.1.jpg" width="220" alt="Cardputer"/> | <img src="Documentation/assets/imgs/CYD2432S028R.jpg" width="220" alt="CYD"/> | <img src="Documentation/assets/imgs/Lilygo-T-HMI.jpg" width="220" alt="T-HMI"/> |
 
 ## Features
 
