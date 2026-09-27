@@ -24,8 +24,8 @@ void WebServerAppUI::draw() {
     tftInstance->drawString("Web Server Manager", 120, 21, 2);
 
     bool wifiDisabled = FileSystem::exists("/local/nowifi.txt");
-    bool serverEnabled = FileSystem::exists("/local/web_on.txt");
     bool isConnected = WebManager::isActive();
+    bool isRunning = WebManager::isServerRunning();
 
     tftInstance->setTextDatum(TL_DATUM);
     
@@ -39,59 +39,73 @@ void WebServerAppUI::draw() {
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
         tftInstance->drawString("Please turn on WiFi", 15, y, 2);
         y += spacing;
-        tftInstance->drawString("to use Web Server.", 15, y, 2);
-    } else if (!serverEnabled) {
-        tftInstance->setTextColor(TFT_ORANGE, TFT_BLACK);
-        tftInstance->drawString("Web Server is OFF", 15, y, 2);
-        y += spacing + 5;
-        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString("Turn it ON to access", 15, y, 2);
-        y += spacing;
-        tftInstance->drawString("the file manager.", 15, y, 2);
+        tftInstance->drawString("in Settings > WiFi.", 15, y, 2);
     } else if (!isConnected) {
         tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
-        tftInstance->drawString("CONNECTION FAILED!", 15, y, 2);
+        tftInstance->drawString("WiFi DISCONNECTED", 15, y, 2);
         y += spacing + 5;
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString("Web server is ON but", 15, y, 2);
+        tftInstance->drawString("Connect to a network", 15, y, 2);
         y += spacing;
-        tftInstance->drawString("WiFi is not connected.", 15, y, 2);
+        tftInstance->drawString("to start Web Server.", 15, y, 2);
+    } else if (!isRunning) {
+        String ip = WebManager::getIPAddress();
+        tftInstance->setTextColor(TFT_ORANGE, TFT_BLACK);
+        tftInstance->drawString("Status:", 15, y, 2);
+        tftInstance->setTextColor(TFT_ORANGE, TFT_BLACK);
+        tftInstance->drawString("STOPPED", 75, y, 2);
+        y += spacing + 5;
+
+        tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+        tftInstance->drawString("Device IP:", 15, y, 2);
+        tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
+        tftInstance->drawString(ip, 95, y, 2);
+        y += spacing + 10;
+
+        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+        tftInstance->drawString("Tap 'Turn ON' below to", 15, y, 2);
+        y += spacing;
+        tftInstance->drawString("start the Web File Manager.", 15, y, 2);
     } else {
         String ip = WebManager::getIPAddress();
         tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
         tftInstance->drawString("Status:", 15, y, 2);
-        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString("RUNNING", 80, y, 2);
+        tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+        tftInstance->drawString("RUNNING", 75, y, 2);
         y += spacing + 5;
 
         tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
         tftInstance->drawString("IP:", 15, y, 2);
         tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
-        tftInstance->drawString(ip, 80, y, 2);
+        tftInstance->drawString(ip, 50, y, 2);
         y += spacing;
 
         tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
         tftInstance->drawString("Port:", 15, y, 2);
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString("80", 80, y, 2);
-        y += spacing + 10;
+        tftInstance->drawString("80 (HTTP)", 65, y, 2);
+        y += spacing + 8;
         
-        tftInstance->setTextColor(TFT_ORANGE, TFT_BLACK);
-        tftInstance->drawString("Visit the IP address", 15, y, 2);
+        tftInstance->setTextColor(TFT_GOLD, TFT_BLACK);
+        tftInstance->drawString("Open in PC / Phone:", 15, y, 2);
         y += spacing;
-        tftInstance->drawString("in your web browser", 15, y, 2);
+        tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
+        tftInstance->drawString("http://" + ip, 15, y, 2);
     }
 
     // Toggle Button (bottom area, above footer)
     tftInstance->setTextDatum(MC_DATUM);
-    if (!serverEnabled || wifiDisabled) {
-        tftInstance->fillRoundRect(60, 235, 120, 35, 4, TFT_DARKGREY);
-        tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
-        tftInstance->drawString("Turn ON", 120, 252, 2);
+    if (!isRunning || !isConnected || wifiDisabled) {
+        uint16_t btnColor = (isConnected && !wifiDisabled) ? 0x03E0 /* Dark Green */ : TFT_DARKGREY;
+        tftInstance->fillRoundRect(45, 235, 150, 36, 6, btnColor);
+        tftInstance->drawRoundRect(45, 235, 150, 36, 6, TFT_WHITE);
+        tftInstance->setTextColor(TFT_WHITE, btnColor);
+        tftInstance->drawString("Turn ON", 120, 253, 2);
     } else {
-        tftInstance->fillRoundRect(60, 235, 120, 35, 4, TFT_RED);
+        tftInstance->fillRoundRect(45, 235, 150, 36, 6, TFT_RED);
+        tftInstance->drawRoundRect(45, 235, 150, 36, 6, TFT_WHITE);
         tftInstance->setTextColor(TFT_WHITE, TFT_RED);
-        tftInstance->drawString("Turn OFF", 120, 252, 2);
+        tftInstance->drawString("Turn OFF", 120, 253, 2);
     }
 
     // Touch Footer
@@ -105,20 +119,21 @@ void WebServerAppUI::handleTouch(uint16_t x, uint16_t y) {
     extern int currentState;
 
     // Toggle Button
-    if (x >= 60 && x <= 180 && y >= 235 && y <= 270) {
-        bool serverEnabled = FileSystem::exists("/local/web_on.txt");
-        if (serverEnabled) {
+    if (x >= 45 && x <= 195 && y >= 235 && y <= 275) {
+        if (!WebManager::isActive()) {
+            return; // Cannot turn on without WiFi connection
+        }
+
+        if (WebManager::isServerRunning()) {
+            WebManager::stopServer();
             FileSystem::deleteFile("/local/web_on.txt");
         } else {
             FileSystem::writeTextFile("/local/web_on.txt", "1");
+            WebManager::startServer();
         }
         
-        tftInstance->fillScreen(TFT_BLACK);
-        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("Rebooting to Apply...", 120, 160, 2);
-        delay(1000);
-        ESP.restart();
+        draw();
+        return;
     }
 
     // Bottom Nav: EXIT
@@ -128,3 +143,4 @@ void WebServerAppUI::handleTouch(uint16_t x, uint16_t y) {
         }
     }
 }
+

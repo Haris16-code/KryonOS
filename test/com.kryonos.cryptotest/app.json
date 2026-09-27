@@ -1,0 +1,11 @@
+{
+  "name": "Hardware Crypto Suite",
+  "packageName": "com.kryonos.cryptotest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Hardware-accelerated cryptographic benchmark & workbench featuring SHA-256/512, HMAC, AES-128/256-CBC, TRNG silicon entropy, and RSA verification.",
+  "type": "Utility",
+  "category": "Security",
+  "api": 2,
+  "main": "main.js"
+}

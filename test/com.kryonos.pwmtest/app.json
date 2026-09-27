@@ -1,0 +1,11 @@
+{
+  "name": "PWM Hardware Tester",
+  "packageName": "com.kryonos.pwmtest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Interactive test tool for hardware LEDC PWM channels, LED dimming, piezo tones, and RC servo angle positioning.",
+  "type": "Utility",
+  "category": "Hardware",
+  "api": 2,
+  "main": "main.js"
+}

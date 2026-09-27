@@ -15,35 +15,50 @@ MyAwesomeApp/
 
 ## 2. The `app.json` File (App Metadata)
 
-The `app.json` file is the heart of your app's identity. The KryonOS Installer reads this file to securely install, update, and categorize your application. 
+The `app.json` file is the heart of your app's identity. The KryonOS Installer and Launcher read this file to securely install, update, launch, and categorize your application.
 
 ### Example Format:
 ```json
 {
-  "name": "My App",
-  "packageName": "com.developer.myapp",
+  "name": "Image Viewer",
+  "packageName": "com.kryonos.imageviewer",
   "version": "1.0.0",
-  "metaUrl": "https://raw.githubusercontent.com/.../myapp/app.json",
-  "author": "John Doe",
-  "description": "A cool app that does awesome things.",
-  "type": "App",
-  "category": "Utility",
-  "api": 1,
-  "changelog": "Initial release."
+  "metaUrl": "https://raw.githubusercontent.com/.../imageviewer/app.json",
+  "author": "KryonOS Team",
+  "description": "Hardware-accelerated image and photo viewer.",
+  "type": "Utility",
+  "category": "Media",
+  "api": 2,
+  "main": "main.js",
+  "changelog": "Initial release.",
+  "fileAssociations": [".bmp", ".png", ".jpg"],
+  "allowCompanionLaunch": true
 }
 ```
 
-### Field Details:
-- **`name`**: The display name of your app. This is what the user sees in the Home.
+### Manifest Fields Specification:
+
+#### Compulsory Fields:
+All standard identity and configuration fields are **COMPULSORY**:
+- **`name`**: The display name of your app. This is what the user sees in the Launcher / Home.
 - **`packageName`**: A globally unique identifier for your app. **Rules: lowercase, dot-separated style, no spaces** (e.g., `com.yourname.appname`). The OS uses this to detect if your app is already installed.
 - **`version`**: Semantic versioning (e.g. `1.0.0`, `1.2.1`). If a user uploads an app with the same `packageName` but a higher version number, the OS will smartly prompt them to "Update" rather than "Install".
-- **`metaUrl`**: The raw URL to the `app.json` on the internet (e.g. your GitHub repository). The App Store uses this URL to automatically check for new versions of your app.
-- **`author`**: Your name or studio. If someone else tries to upload an app with your `packageName` but a different `author` name, the OS will throw a conflict warning to protect your app from being overwritten by malicious developers.
-- **`description`**: A short summary of your app, displayed to the user when they install your app for the first time.
-- **`type`**: The broad classification (e.g., `App` or `Game`). You can type any value here without restriction.
-- **`category`**: The specific category (e.g., `Benchmark`, `Utility`, `Arcade`). You can type any value here without restriction.
-- **`api`**: The KryonOS API level your app targets. Currently, this should be `1`. (This is verified by the system at time of Installing App.).
-- **`changelog`**: A brief string detailing what changed. When a user updates your app, this replaces the description and shows up under a "What's New" header!
+- **`author`**: Your name or studio. Protects your app from being overwritten by unauthorized developers.
+- **`description`**: A short summary of your app, displayed to the user when installing.
+- **`type`**: Broad classification (e.g., `App`, `Game`, `Utility`).
+- **`category`**: **COMPULSORY** app categorization (e.g., `Utility`, `Media`, `Hardware`, `Security`, `System`, `Games`).
+- **`api`**: Target KryonOS API level integer (e.g., `2`).
+- **`main`**: The entry point JavaScript filename (e.g., `"main.js"`).
+- **`metaUrl`**: (Optional for local, required for App Store) The raw URL to the `app.json` on the internet for auto-updates.
+- **`changelog`**: A brief string detailing what changed on update.
+
+#### Optional Fields (The only 2 optional keys):
+- **`fileAssociations`** *(Array of Strings, Optional, Default: `[]`)*:
+  Tells the OS which file extensions this app can open (e.g., `[".bmp", ".png", ".jpg"]` or `[".txt", ".log", ".json"]`). When another app calls `System.ipc.openFile(path)`, the OS inspects this registry to automatically launch your app with the target file path.
+- **`allowCompanionLaunch`** *(Boolean, Optional, Default: `true`)*:
+  Specifies whether other third-party apps are permitted to launch your app via `System.ipc.launch()`.
+  - If **omitted**, it automatically **defaults to `true`**.
+  - If explicitly set to **`false`**, external companion launch requests will be restricted by the OS.
 
 ## 3. The `main.js` File (App Logic)
 

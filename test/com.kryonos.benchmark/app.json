@@ -1,0 +1,11 @@
+{
+  "name": "KryonBench 3D",
+  "packageName": "com.kryonos.benchmark",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Hardware benchmarking tool for FastMath FPU and Kryon3D rendering APIs.",
+  "type": "Utility",
+  "category": "Benchmark",
+  "api": 1,
+  "main": "main.js"
+}

@@ -12,11 +12,9 @@ public:
     static void loop();
     static void executeJS(const char* jsCode);
     static String checkSyntax(const char* jsCode);
+    static void checkJSError(duk_context *ctx, duk_int_t result);
     static duk_context *ctx;
     static TFT_eSPI *tftInstance;
-
-private:
-    static void checkJSError(duk_context *ctx, duk_int_t result);
 };
 
 #endif // HARIX_KERNEL_H

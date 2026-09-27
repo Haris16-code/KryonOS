@@ -1,0 +1,11 @@
+{
+  "name": "I2C Bus Scanner & Analyzer",
+  "packageName": "com.kryonos.i2ctest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Interactive I2C bus scanner, live ACK probe, register hex inspector, and multi-byte sensor reader.",
+  "type": "Utility",
+  "category": "Hardware",
+  "api": 2,
+  "main": "main.js"
+}

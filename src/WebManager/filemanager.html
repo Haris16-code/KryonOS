@@ -1,165 +1,809 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ESP32 Storage Manager</title>
+    <title>KryonOS File & Storage Manager</title>
     <style>
-        :root {
-            --bg-color: #f4f6f9;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --primary-color: #007bff;
-            --primary-hover: #0056b3;
-            --danger-color: #dc3545;
-            --danger-hover: #bd2130;
-            --border-color: #e0e0e0;
+        /* ======================================================== */
+        /* THEMES SPECIFICATION                                     */
+        /* ======================================================== */
+        
+        /* 1. VS Code Dark Theme (Default) */
+        :root, [data-theme="dark"] {
+            --bg-dark: #1e1e1e;
+            --sidebar-bg: #252526;
+            --card-bg: #252526;
+            --card-surface: #1e1e1e;
+            --table-header: #2d2d2d;
+            --border-color: #3c3c3c;
+            --border-focus: #007acc;
+            --text-main: #cccccc;
+            --text-heading: #ffffff;
+            --text-muted: #858585;
+            --primary: #007acc;
+            --primary-hover: #0098ff;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #f43f5e;
+            --accent-cyan: #38bdf8;
+            --accent-purple: #a855f7;
+            --vscode-bg: #1e1e1e;
+            --vscode-sidebar: #252526;
+            --vscode-line: #858585;
+            --vscode-active-line: #c6c6c6;
+            --vscode-status: #007acc;
+            --input-bg: #1e1e1e;
+            --btn-bg: #2d2d2d;
+            --btn-hover: #3c3c3c;
+            --card-hover: #2a2d2e;
+            --card-active: #094771;
+            --theme-sel-bg: #1e1e1e;
+            --theme-btn-active: #007acc;
+            --theme-btn-active-text: #ffffff;
         }
 
-        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: var(--bg-color); color: var(--text-color); display: flex; flex-direction: column; height: 100vh; }
+        /* 2. Cyber Blue Theme */
+        [data-theme="blue"] {
+            --bg-dark: #0f172a;
+            --sidebar-bg: #1e293b;
+            --card-bg: #1e293b;
+            --card-surface: #0f172a;
+            --table-header: #172033;
+            --border-color: #334155;
+            --border-focus: #007acc;
+            --text-main: #f8fafc;
+            --text-heading: #ffffff;
+            --text-muted: #94a3b8;
+            --primary: #007acc;
+            --primary-hover: #0098ff;
+            --accent-green: #10b981;
+            --accent-amber: #f59e0b;
+            --accent-red: #ef4444;
+            --accent-cyan: #38bdf8;
+            --accent-purple: #a855f7;
+            --vscode-bg: #1e1e1e;
+            --vscode-sidebar: #252526;
+            --vscode-line: #858585;
+            --vscode-active-line: #c6c6c6;
+            --vscode-status: #007acc;
+            --input-bg: #0f172a;
+            --btn-bg: #0f172a;
+            --btn-hover: #334155;
+            --card-hover: #172554;
+            --card-active: #1e3a8a;
+            --theme-sel-bg: #0f172a;
+            --theme-btn-active: #007acc;
+            --theme-btn-active-text: #ffffff;
+        }
+
+        /* 3. Clean Light Theme */
+        [data-theme="light"] {
+            --bg-dark: #f8fafc;
+            --sidebar-bg: #f1f5f9;
+            --card-bg: #ffffff;
+            --card-surface: #f8fafc;
+            --table-header: #f1f5f9;
+            --border-color: #cbd5e1;
+            --border-focus: #007acc;
+            --text-main: #1e293b;
+            --text-heading: #0f172a;
+            --text-muted: #64748b;
+            --primary: #007acc;
+            --primary-hover: #005fb8;
+            --accent-green: #059669;
+            --accent-amber: #d97706;
+            --accent-red: #dc2626;
+            --accent-cyan: #0284c7;
+            --accent-purple: #9333ea;
+            --vscode-bg: #1e1e1e;
+            --vscode-sidebar: #252526;
+            --vscode-line: #858585;
+            --vscode-active-line: #c6c6c6;
+            --vscode-status: #007acc;
+            --input-bg: #ffffff;
+            --btn-bg: #f1f5f9;
+            --btn-hover: #e2e8f0;
+            --card-hover: #f1f5f9;
+            --card-active: #e0f2fe;
+            --theme-sel-bg: #e2e8f0;
+            --theme-btn-active: #007acc;
+            --theme-btn-active-text: #ffffff;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        body { background-color: var(--bg-dark); color: var(--text-main); display: flex; flex-direction: column; height: 100vh; overflow: hidden; transition: background-color 0.2s, color 0.2s; }
+
+        /* Header */
+        header {
+            background-color: var(--sidebar-bg);
+            border-bottom: 1px solid var(--border-color);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            z-index: 10;
+        }
+        .header-left { display: flex; align-items: center; gap: 14px; }
+        .brand { display: flex; align-items: center; gap: 10px; font-size: 1.15rem; font-weight: 700; color: var(--text-heading); letter-spacing: 0.5px; }
+        .brand-badge { background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); font-size: 0.75rem; padding: 2px 8px; border-radius: 9999px; border: 1px solid rgba(56, 189, 248, 0.3); font-weight: 600; display: none; }
         
-        header { background-color: #1e293b; color: white; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        header h1 { font-size: 1.25rem; font-weight: 600; }
-        
+        .header-right { display: flex; align-items: center; gap: 12px; }
+        .sys-telemetry { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-muted); }
+        .telemetry-item { display: flex; align-items: center; gap: 6px; background: var(--card-surface); padding: 5px 10px; border-radius: 6px; border: 1px solid var(--border-color); }
+        .telemetry-item strong { color: var(--text-heading); }
+
+        /* Theme Switcher Segmented Control */
+        .theme-selector {
+            display: flex;
+            background: var(--theme-sel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 2px;
+            gap: 2px;
+        }
+        .theme-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.15s ease;
+        }
+        .theme-btn:hover { color: var(--text-heading); }
+        .theme-btn.active { background: var(--theme-btn-active); color: var(--theme-btn-active-text); }
+
+        /* Main Container */
         .container { display: flex; flex: 1; overflow: hidden; }
+
+        /* Sidebar */
+        sidebar {
+            width: 280px;
+            background-color: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            padding: 18px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+        }
+        .sidebar-title { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; margin-bottom: 2px; padding-left: 4px; }
         
-        /* Sidebar Styling */
-        sidebar { width: 240px; background-color: #0f172a; color: #94a3b8; padding: 20px 10px; display: flex; flex-direction: column; gap: 10px; }
-        .storage-btn { display: flex; align-items: center; gap: 10px; padding: 12px; border-radius: 6px; cursor: pointer; transition: all 0.2s; font-weight: 500; }
-        .storage-btn:hover { background-color: #1e293b; color: white; }
-        .storage-btn.active { background-color: var(--primary-color); color: white; }
+        .storage-card {
+            background: var(--card-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .storage-card:hover:not(.disabled) { border-color: var(--primary); background: var(--card-hover); }
+        .storage-card.active { border-color: var(--primary); background: var(--card-active); box-shadow: 0 0 0 1px var(--primary); }
+        .storage-card.disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .storage-header { display: flex; justify-content: space-between; align-items: center; }
+        .storage-name { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.9rem; color: var(--text-heading); }
+        .storage-badge { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+        .badge-mounted { background: rgba(16, 185, 129, 0.2); color: var(--accent-green); }
+        .badge-unmounted { background: rgba(239, 68, 68, 0.2); color: var(--accent-red); }
+        
+        .storage-meta { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); }
+        .progress-track { width: 100%; height: 6px; background: rgba(125, 125, 125, 0.2); border-radius: 9999px; overflow: hidden; }
+        .progress-fill { height: 100%; background: var(--primary); border-radius: 9999px; transition: width 0.3s; }
+        .progress-fill.warning { background: var(--accent-amber); }
+        .progress-fill.danger { background: var(--accent-red); }
+
+        /* GitHub Header Button */
+        .gh-header-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--card-surface);
+            border: 1px solid var(--border-color);
+            padding: 4px 10px;
+            border-radius: 6px;
+            color: var(--text-main);
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 600;
+            transition: all 0.15s ease;
+        }
+        .gh-header-btn:hover {
+            border-color: var(--border-focus);
+            color: var(--text-heading);
+            background: var(--btn-hover);
+        }
+        .gh-star-count {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-amber);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+
+        /* Sidebar Community Widget */
+        .sidebar-spacer { flex: 1; }
+        .community-card {
+            background: var(--card-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: auto;
+        }
+        .community-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-heading);
+        }
+        .community-body {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            font-size: 0.75rem;
+        }
+        .community-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: var(--text-muted);
+        }
+        .community-val {
+            color: var(--text-heading);
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .community-actions {
+            display: flex;
+            gap: 6px;
+            margin-top: 2px;
+        }
+        .btn-sm {
+            padding: 5px 8px;
+            font-size: 0.75rem;
+            flex: 1;
+            justify-content: center;
+            text-decoration: none;
+        }
+        .btn-gh-action {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: rgba(245, 158, 11, 0.3);
+            color: var(--accent-amber);
+        }
+        .btn-gh-action:hover {
+            background: var(--accent-amber);
+            color: #000000 !important;
+        }
+
+        /* About Modal Detailed Styles */
+        .about-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin: 14px 0;
+        }
+        .about-stat-chip {
+            background: var(--card-surface);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .about-chip-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+        .about-chip-val { font-size: 0.95rem; font-weight: 700; color: var(--text-heading); display: inline-flex; align-items: center; gap: 6px; }
+        .about-repo-desc { font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 12px; }
+        .about-links { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+        .about-link-row { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: var(--card-surface); border: 1px solid var(--border-color); border-radius: 6px; text-decoration: none; color: var(--text-heading); font-size: 0.85rem; font-weight: 500; transition: all 0.15s; }
+        .about-link-row:hover { border-color: var(--primary); background: var(--card-hover); color: var(--accent-cyan); }
 
         /* Main Workspace */
-        main { flex: 1; display: flex; flex-direction: column; padding: 20px; overflow: hidden; }
-        
+        main { flex: 1; display: flex; flex-direction: column; padding: 16px 20px; overflow: hidden; position: relative; }
+
         /* Toolbar */
-        .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; background: var(--card-bg); padding: 12px 20px; border-radius: 8px; border: 1px solid var(--border-color); margin-bottom: 20px; gap: 10px; }
-        .breadcrumbs { font-weight: 500; font-size: 0.95rem; color: #64748b; }
-        .breadcrumbs span { color: var(--text-color); cursor: pointer; }
-        .breadcrumbs span:hover { text-decoration: underline; }
-        .actions { display: flex; gap: 10px; align-items: center; }
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--card-bg);
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 12px;
+            gap: 12px;
+        }
+        .breadcrumbs { font-size: 0.9rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+        .crumb { color: var(--text-heading); font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 4px; transition: background 0.15s; }
+        .crumb:hover { background: var(--btn-hover); color: var(--accent-cyan); }
+        .crumb-sep { color: var(--text-muted); }
         
-        /* UI Elements */
-        .btn { padding: 8px 14px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 0.875rem; display: inline-flex; align-items: center; gap: 6px; transition: background 0.2s; }
-        .btn-primary { background-color: var(--primary-color); color: white; }
-        .btn-primary:hover { background-color: var(--primary-hover); }
-        .btn-danger { background-color: var(--danger-color); color: white; }
-        .btn-danger:hover { background-color: var(--danger-hover); }
-        .btn-secondary { background-color: #e2e8f0; color: #334155; }
-        .btn-secondary:hover { background-color: #cbd5e1; }
-        
+        .toolbar-actions { display: flex; gap: 8px; align-items: center; }
+        .search-box { display: flex; align-items: center; gap: 6px; background: var(--input-bg); border: 1px solid var(--border-color); padding: 6px 10px; border-radius: 6px; width: 170px; transition: width 0.2s, border-color 0.2s; }
+        .search-box:focus-within { border-color: var(--border-focus); width: 210px; }
+        .search-box input { background: transparent; border: none; outline: none; color: var(--text-heading); font-size: 0.85rem; width: 100%; }
+
+        .btn {
+            padding: 7px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.85rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.15s ease;
+            background: var(--btn-bg);
+            color: var(--text-main);
+        }
+        .btn:hover { background: var(--btn-hover); border-color: var(--border-focus); color: var(--text-heading); }
+        .btn-primary { background: var(--primary); border-color: var(--primary); color: #ffffff !important; }
+        .btn-primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+        .btn-danger { background: rgba(239, 68, 68, 0.15); border-color: rgba(239, 68, 68, 0.3); color: var(--accent-red); }
+        .btn-danger:hover { background: var(--accent-red); color: #ffffff !important; }
+        .btn-icon-only { padding: 6px; }
+
         input[type="file"] { display: none; }
 
-        /* File List Table */
-        .file-card { background: var(--card-bg); border-radius: 8px; border: 1px solid var(--border-color); overflow-y: auto; flex: 1; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        /* Upload Progress */
+        .upload-bar-container { display: none; width: 100%; background: var(--card-surface); border-radius: 6px; margin-bottom: 12px; overflow: hidden; border: 1px solid var(--border-color); padding: 2px; }
+        .upload-bar-fill { width: 0%; height: 8px; background: linear-gradient(90deg, #007acc, #38bdf8); border-radius: 4px; transition: width 0.1s; }
+
+        /* File Card / Table */
+        .file-card {
+            background: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            overflow-y: auto;
+            flex: 1;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.15);
+            position: relative;
+        }
         table { width: 100%; border-collapse: collapse; text-align: left; }
-        th, td { padding: 12px 20px; border-bottom: 1px solid var(--border-color); font-size: 0.9rem; }
-        th { background-color: #f8fafc; font-weight: 600; color: #64748b; }
-        tr:last-child td { border-bottom: none; }
-        tr:hover td { background-color: #f8fafc; }
+        th, td { padding: 10px 16px; border-bottom: 1px solid var(--border-color); font-size: 0.875rem; }
+        th { background-color: var(--table-header); font-weight: 600; color: var(--text-muted); position: sticky; top: 0; z-index: 2; }
+        tr:hover td { background-color: rgba(125, 125, 125, 0.05); }
         
-        .file-icon { font-size: 1.1rem; margin-right: 8px; }
-        .clickable-row { cursor: pointer; color: var(--primary-color); font-weight: 500; }
+        .name-col { display: flex; align-items: center; gap: 10px; color: var(--text-heading); }
+        .clickable-row { cursor: pointer; color: var(--accent-cyan); font-weight: 500; }
         .clickable-row:hover { text-decoration: underline; }
-        .row-actions { display: flex; gap: 8px; justify-content: flex-end; }
-        .row-actions button { padding: 4px 8px; font-size: 0.75rem; }
+        .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+        .row-actions .btn { padding: 4px 8px; font-size: 0.75rem; }
 
-        /* Progress Bar */
-        .progress-container { display: none; width: 100%; background-color: #e2e8f0; border-radius: 4px; margin-top: 10px; overflow: hidden; }
-        .progress-bar { width: 0%; height: 8px; background-color: #22c55e; transition: width 0.1s; }
+        /* SVGs */
+        .icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; stroke-width: 2; flex-shrink: 0; }
+        .icon-lg { width: 22px; height: 22px; }
+        .icon-folder { color: #f59e0b; }
+        .icon-code { color: #38bdf8; }
+        .icon-json { color: #10b981; }
+        .icon-text { color: var(--text-muted); }
+        .icon-img { color: #ec4899; }
+        .icon-bin { color: #a855f7; }
 
-        /* Modal Editor & Popups */
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
-        .modal-content { background: var(--card-bg); border-radius: 8px; width: 90%; max-width: 800px; display: flex; flex-direction: column; max-height: 85vh; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); }
-        .modal-header { padding: 15px 20px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
-        .modal-body { padding: 20px; flex: 1; overflow-y: auto; }
-        .modal-footer { padding: 15px 20px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
-        
-        #editor-textarea { width: 100%; height: 400px; font-family: "Courier New", Courier, monospace; font-size: 0.9rem; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; resize: vertical; }
-        
-        #loader { display: none; border: 4px solid #f3f3f3; border-top: 4px solid var(--primary-color); border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto; }
+        /* Empty State & Loader */
+        .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+        #loader { display: none; border: 3px solid var(--border-color); border-top: 3px solid var(--accent-cyan); border-radius: 50%; width: 28px; height: 28px; animation: spin 0.8s linear infinite; margin: 30px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
 
-        .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 5px; font-weight: 500; font-size: 0.85rem; }
-        .form-group input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; }
+        /* Drag-and-Drop Overlay */
+        .drop-overlay {
+            display: none;
+            position: absolute;
+            inset: 16px 20px;
+            background: rgba(15, 23, 42, 0.85);
+            border: 2px dashed var(--accent-cyan);
+            border-radius: 8px;
+            z-index: 20;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            gap: 12px;
+            color: var(--accent-cyan);
+            font-weight: 600;
+            backdrop-filter: blur(2px);
+        }
+
+        /* Generic Modals */
+        .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 1000; backdrop-filter: blur(4px); }
+        .modal-content { background: var(--sidebar-bg); border-radius: 8px; width: 90%; max-width: 500px; display: flex; flex-direction: column; border: 1px solid var(--border-color); box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+        .modal-header { padding: 14px 18px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; color: var(--text-heading); }
+        .modal-body { padding: 18px; }
+        .modal-footer { padding: 12px 18px; border-top: 1px solid var(--border-color); display: flex; justify-content: flex-end; gap: 10px; }
+        
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; margin-bottom: 6px; font-weight: 500; font-size: 0.85rem; color: var(--text-muted); }
+        .form-group input { width: 100%; padding: 8px 12px; background: var(--input-bg); border: 1px solid var(--border-color); border-radius: 6px; color: var(--text-heading); font-size: 0.9rem; outline: none; }
+        .form-group input:focus { border-color: var(--primary); }
+
+        /* ======================================================== */
+        /* VS CODE STYLE CODE EDITOR MODAL                          */
+        /* ======================================================== */
+        .vscode-modal-content {
+            background: var(--vscode-bg);
+            border: 1px solid #3c3c3c;
+            border-radius: 8px;
+            width: 94%;
+            max-width: 1050px;
+            height: 85vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+        }
+        .vscode-titlebar {
+            background: var(--vscode-sidebar);
+            padding: 8px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333333;
+            user-select: none;
+        }
+        .vscode-tab {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--vscode-bg);
+            padding: 6px 14px;
+            border-radius: 4px 4px 0 0;
+            border-top: 2px solid var(--primary);
+            font-size: 0.85rem;
+            color: #ffffff;
+            font-weight: 500;
+        }
+        .vscode-tools { display: flex; align-items: center; gap: 8px; }
+        .vscode-btn { background: #333333; border: 1px solid #444; color: #cccccc; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 6px; }
+        .vscode-btn:hover { background: #444444; color: #ffffff; }
+        .vscode-btn-primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .vscode-btn-primary:hover { background: var(--primary-hover); }
+
+        .vscode-editor-body {
+            flex: 1;
+            display: flex;
+            position: relative;
+            background: var(--vscode-bg);
+            overflow: hidden;
+        }
+        .vscode-gutter {
+            width: 50px;
+            background: var(--vscode-bg);
+            border-right: 1px solid #2d2d2d;
+            color: var(--vscode-line);
+            padding: 12px 6px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            text-align: right;
+            user-select: none;
+            overflow: hidden;
+            white-space: pre-line;
+        }
+        .vscode-textarea-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+        #editor-textarea {
+            width: 100%;
+            height: 100%;
+            background: var(--vscode-bg);
+            color: #d4d4d4;
+            border: none;
+            outline: none;
+            resize: none;
+            padding: 12px 14px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            tab-size: 4;
+            white-space: pre;
+            overflow: auto;
+            caret-color: #38bdf8;
+        }
+        #editor-textarea::selection { background: #264f78; }
+
+        .vscode-statusbar {
+            background: var(--vscode-status);
+            color: #ffffff;
+            font-size: 0.75rem;
+            padding: 4px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+        .statusbar-left, .statusbar-right { display: flex; align-items: center; gap: 14px; }
+
+        /* Toast Notifications */
+        #toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--sidebar-bg);
+            color: var(--text-heading);
+            padding: 10px 18px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3);
+            font-size: 0.875rem;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            z-index: 2000;
+            transition: transform 0.2s, opacity 0.2s;
+        }
+        #toast.show { display: flex; }
+        #toast.success { border-color: var(--accent-green); }
+        #toast.error { border-color: var(--accent-red); }
     </style>
 </head>
 <body>
 
+    <!-- Header -->
     <header>
-        <h1>ESP32 File Dashboard</h1>
-        <div id="sys-status" style="font-size: 0.85rem; color: #cbd5e1;">Connected</div>
+        <div class="header-left">
+            <div class="brand">
+                <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+                KryonOS Manager
+                <span class="brand-badge" id="os-ver-badge"></span>
+            </div>
+        </div>
+
+        <div class="header-right">
+            <!-- GitHub Star Button -->
+            <a href="https://github.com/Haris16-code/KryonOS" target="_blank" rel="noopener noreferrer" class="gh-header-btn" title="Star KryonOS on GitHub">
+                <svg class="icon" style="width: 15px; height: 15px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+                <span>GitHub</span>
+                <span class="gh-star-count" id="header-gh-stars">★ --</span>
+            </a>
+
+            <!-- About Button -->
+            <button class="btn btn-icon-only" onclick="openModal('about-modal')" title="About KryonOS & Community">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+            </button>
+
+            <!-- Theme Selector -->
+            <div class="theme-selector" title="Switch Theme">
+                <button class="theme-btn active" id="theme-dark-btn" onclick="setTheme('dark')" title="VS Code Dark">
+                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                    <span>Dark</span>
+                </button>
+                <button class="theme-btn" id="theme-blue-btn" onclick="setTheme('blue')" title="Cyber Blue">
+                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m4.93 4.93 4.24 4.24"/><path d="m14.83 9.17 4.24-4.24"/><path d="m14.83 14.83 4.24 4.24"/><path d="m9.17 14.83-4.24 4.24"/></svg>
+                    <span>Blue</span>
+                </button>
+                <button class="theme-btn" id="theme-light-btn" onclick="setTheme('light')" title="Light Theme">
+                    <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+                    <span>Light</span>
+                </button>
+            </div>
+
+            <!-- Telemetry -->
+            <div class="sys-telemetry">
+                <div class="telemetry-item" id="telemetry-chip-wrap" title="SoC Chip Model" style="display: none;">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+                    <span><strong id="telemetry-chip">--</strong></span>
+                </div>
+                <div class="telemetry-item" id="telemetry-ram-wrap" title="Free Heap RAM">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-green);"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+                    <span>RAM: <strong id="telemetry-ram">--</strong></span>
+                </div>
+                <div class="telemetry-item" id="telemetry-psram-wrap" title="Free PSRAM Memory" style="display: none;">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-purple);"><path d="M12 20v2"/><path d="M12 2v2"/><path d="M17 20v2"/><path d="M17 2v2"/><path d="M2 12h2"/><path d="M2 17h2"/><path d="M2 7h2"/><path d="M20 12h2"/><path d="M20 17h2"/><path d="M20 7h2"/><path d="M7 20v2"/><path d="M7 2v2"/><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1"/></svg>
+                    <span>PSRAM: <strong id="telemetry-psram">--</strong></span>
+                </div>
+            </div>
+        </div>
     </header>
 
     <div class="container">
+        <!-- Sidebar -->
         <sidebar>
-            <div class="storage-btn active" id="btn-littlefs" onclick="switchStorage('/littlefs')">
-                <span class="file-icon">📁</span> LittleFS
+            <div class="sidebar-title">Storage Drives</div>
+            
+            <!-- LittleFS Card -->
+            <div class="storage-card active" id="card-littlefs" onclick="switchStorage('/littlefs')">
+                <div class="storage-header">
+                    <div class="storage-name">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);"><path d="M10 16h.01"/><path d="M2.212 11.577a2 2 0 0 0-.212.896V18a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-5.527a2 2 0 0 0-.212-.896L18.55 5.11A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><path d="M21.946 12.013H2.054"/><path d="M6 16h.01"/></svg>
+                        LittleFS (Flash)
+                    </div>
+                    <span class="storage-badge badge-mounted">Mounted</span>
+                </div>
+                <div class="storage-meta">
+                    <span id="lfs-used-text">-- / --</span>
+                    <span id="lfs-pct-text">--%</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="lfs-bar" style="width: 0%;"></div>
+                </div>
             </div>
-            <div class="storage-btn" id="btn-sd" onclick="switchStorage('/sd')">
-                <span class="file-icon">💾</span> SD Card
+
+            <!-- SD Card -->
+            <div class="storage-card" id="card-sd" onclick="switchStorage('/sd')">
+                <div class="storage-header">
+                    <div class="storage-name">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-amber);"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M7 21h10a2 2 0 0 0 2 -2v-14a2 2 0 0 0 -2 -2h-6.172a2 2 0 0 0 -1.414 .586l-3.828 3.828a2 2 0 0 0 -.586 1.414v10.172a2 2 0 0 0 2 2"/><path d="M13 6v2"/><path d="M16 6v2"/><path d="M10 7v1"/></svg>
+                        SD Storage
+                    </div>
+                    <span class="storage-badge badge-mounted" id="sd-status-badge">Checking...</span>
+                </div>
+                <div class="storage-meta">
+                    <span id="sd-used-text">-- / --</span>
+                    <span id="sd-pct-text">--%</span>
+                </div>
+                <div class="progress-track">
+                    <div class="progress-fill" id="sd-bar" style="width: 0%;"></div>
+                </div>
+            </div>
+
+            <!-- Spacer & Community Card -->
+            <div class="sidebar-spacer"></div>
+            <div class="community-card">
+                <div class="community-header">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-purple);"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+                    <span>Community & Project</span>
+                </div>
+                <div class="community-body">
+                    <div class="community-row">
+                        <span>GitHub Stars</span>
+                        <span class="community-val">
+                            <svg class="icon" style="width:13px; height:13px; color:#f59e0b;" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                            <strong id="sidebar-gh-stars-num">--</strong>
+                        </span>
+                    </div>
+                    <div class="community-row">
+                        <span>Author</span>
+                        <span class="community-val">Haris (@Haris16-code)</span>
+                    </div>
+                </div>
+                <div class="community-actions">
+                    <a href="https://github.com/Haris16-code/KryonOS" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-gh-action" title="Star on GitHub">
+                        ★ Star Repo
+                    </a>
+                    <button class="btn btn-sm" onclick="openModal('about-modal')" title="View Project Details">
+                        About
+                    </button>
+                </div>
             </div>
         </sidebar>
 
-        <main>
+        <!-- Main Workspace -->
+        <main id="drop-zone-main">
+            <!-- Drop Overlay -->
+            <div class="drop-overlay" id="drop-overlay">
+                <svg class="icon icon-lg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+                Drop files anywhere here to upload directly
+            </div>
+
+            <!-- Toolbar -->
             <div class="toolbar">
                 <div class="breadcrumbs" id="breadcrumb-container">
-                    Root: <span onclick="navigateTo('/')">/</span>
+                    <span class="crumb" onclick="navigateTo('/')">
+                        <svg class="icon icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                        /littlefs
+                    </span>
                 </div>
-                <div class="actions">
-                    <button class="btn btn-secondary" onclick="refreshDir()">🔄 Refresh</button>
-                    <button class="btn btn-secondary" onclick="openCreateModal('folder')">📁 New Folder</button>
-                    <button class="btn btn-secondary" onclick="openCreateModal('file')">📄 New File</button>
-                    <label class="btn btn-primary">
-                        📤 Upload File
-                        <input type="file" id="file-uploader" onchange="uploadFile()">
+
+                <div class="toolbar-actions">
+                    <div class="search-box">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--text-muted);"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg>
+                        <input type="text" id="search-input" placeholder="Filter files..." oninput="filterFiles()">
+                    </div>
+                    <button class="btn btn-icon-only" onclick="refreshDir()" title="Refresh">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                    </button>
+                    <button class="btn" onclick="openCreateModal('folder')" title="New Folder">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                        New Folder
+                    </button>
+                    <button class="btn" onclick="openCreateModal('file')" title="New File">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M9 15h6"/><path d="M12 18v-6"/></svg>
+                        New File
+                    </button>
+                    <label class="btn btn-primary" title="Upload File">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
+                        Upload
+                        <input type="file" id="file-uploader" onchange="handleFileInput(this)">
                     </label>
-                </div>
-                <div class="progress-container" id="upload-progress-zone">
-                    <div class="progress-bar" id="upload-progress"></div>
                 </div>
             </div>
 
+            <!-- Upload Progress Track -->
+            <div class="upload-bar-container" id="upload-progress-zone">
+                <div class="upload-bar-fill" id="upload-progress"></div>
+            </div>
+
+            <!-- File List Card -->
             <div class="file-card">
                 <table>
                     <thead>
                         <tr>
-                            <th>Name</th>
-                            <th>Size (Bytes)</th>
-                            <th style="text-align: right;">Actions</th>
+                            <th style="width: 50%;">Name</th>
+                            <th style="width: 20%;">Size</th>
+                            <th style="text-align: right; width: 30%;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="file-list-body">
-                        </tbody>
+                        <!-- Items rendered via JS -->
+                    </tbody>
                 </table>
                 <div id="loader"></div>
             </div>
         </main>
     </div>
 
+    <!-- ======================================================== -->
+    <!-- VS CODE STYLE CODE EDITOR MODAL                          -->
+    <!-- ======================================================== -->
     <div class="modal" id="editor-modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="editor-title">Editing File</h3>
-                <button class="btn" onclick="closeModal('editor-modal')">❌</button>
+        <div class="vscode-modal-content">
+            <!-- Titlebar & Tabs -->
+            <div class="vscode-titlebar">
+                <div class="vscode-tab">
+                    <span id="editor-tab-icon"></span>
+                    <span id="editor-tab-title">main.js</span>
+                </div>
+                <div class="vscode-tools">
+                    <button class="vscode-btn vscode-btn-primary" onclick="saveFileContent()" title="Save (Ctrl+S)">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg>
+                        Save
+                    </button>
+                    <button class="vscode-btn" onclick="closeModal('editor-modal')" title="Close (Esc)">
+                        ✕
+                    </button>
+                </div>
             </div>
-            <div class="modal-body">
-                <textarea id="editor-textarea" spellcheck="false"></textarea>
+
+            <!-- Editor Body with Line Numbers Gutter -->
+            <div class="vscode-editor-body">
+                <div class="vscode-gutter" id="editor-gutter">1</div>
+                <div class="vscode-textarea-wrapper">
+                    <textarea id="editor-textarea" spellcheck="false" placeholder="Write code here..."></textarea>
+                </div>
             </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('editor-modal')">Cancel</button>
-                <button class="btn btn-primary" onclick="saveFileContent()">💾 Save Changes</button>
+
+            <!-- VS Code Status Bar -->
+            <div class="vscode-statusbar">
+                <div class="statusbar-left">
+                    <span id="status-pos">Ln 1, Col 1</span>
+                    <span id="status-lines">1 line</span>
+                </div>
+                <div class="statusbar-right">
+                    <span>UTF-8</span>
+                    <span>Spaces: 4</span>
+                    <span id="status-lang">JavaScript</span>
+                </div>
             </div>
         </div>
     </div>
 
+    <!-- Generic Input Modal (Create/Rename) -->
     <div class="modal" id="input-modal">
-        <div class="modal-content" style="max-width: 400px;">
+        <div class="modal-content">
             <div class="modal-header">
-                <h3 id="input-modal-title">Action</h3>
-                <button class="btn" onclick="closeModal('input-modal')">❌</button>
+                <h3 class="modal-title" id="input-modal-title">Action</h3>
+                <button class="btn btn-icon-only" onclick="closeModal('input-modal')">✕</button>
             </div>
             <div class="modal-body">
                 <div class="form-group">
@@ -168,102 +812,400 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closeModal('input-modal')">Cancel</button>
-                <button class="btn btn-primary" id="input-modal-submit">Submit</button>
+                <button class="btn" onclick="closeModal('input-modal')">Cancel</button>
+                <button class="btn btn-primary" id="input-modal-submit">Confirm</button>
             </div>
         </div>
     </div>
 
+    <!-- About & Project Community Modal -->
+    <div class="modal" id="about-modal">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3 class="modal-title">
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                    About KryonOS
+                </h3>
+                <button class="btn btn-icon-only" onclick="closeModal('about-modal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="about-repo-desc" id="about-repo-desc">
+                    A lightweight, modular, event-driven Embedded Operating System and Web File & Storage Manager for ESP32 and ESP32-S3 devices.
+                </div>
+
+                <div class="about-grid">
+                    <div class="about-stat-chip">
+                        <span class="about-chip-label">GitHub Stars</span>
+                        <span class="about-chip-val" style="color: #f59e0b;">
+                            <svg class="icon" style="width:16px;height:16px;" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                            <span id="about-gh-stars">--</span>
+                        </span>
+                    </div>
+                    <div class="about-stat-chip">
+                        <span class="about-chip-label">Repository Forks</span>
+                        <span class="about-chip-val" style="color: var(--accent-cyan);">
+                            <svg class="icon" style="width:16px;height:16px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v2c0 .6-.4 1-1 1H7c-.6 0-1-.4-1-1V9"/><path d="M12 12v3"/></svg>
+                            <span id="about-gh-forks">--</span>
+                        </span>
+                    </div>
+                    <div class="about-stat-chip">
+                        <span class="about-chip-label">Author</span>
+                        <span class="about-chip-val">Haris (@Haris16-code)</span>
+                    </div>
+                    <div class="about-stat-chip">
+                        <span class="about-chip-label">License</span>
+                        <span class="about-chip-val" style="color: var(--accent-green);">Open Source</span>
+                    </div>
+                </div>
+
+                <div class="about-links">
+                    <a href="https://github.com/Haris16-code/KryonOS" target="_blank" rel="noopener noreferrer" class="about-link-row">
+                        <span style="display:flex; align-items:center; gap:8px;">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+                            Star & View on GitHub
+                        </span>
+                        <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                    </a>
+                    <a href="https://github.com/Haris16-code/KryonOS/issues" target="_blank" rel="noopener noreferrer" class="about-link-row">
+                        <span style="display:flex; align-items:center; gap:8px;">
+                            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-amber);"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+                            Issues & Discussions
+                        </span>
+                        <svg class="icon" style="width:14px;height:14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+                    </a>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeModal('about-modal')">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast"></div>
+
     <script>
-        // Global State variables
-        let currentStorage = '/littlefs'; // Base mount root
-        let currentPath = '/';            // Current directory track relative to root
-        let activeEditingPath = '';       // Tracks absolute path of file being edited
+        // Global State
+        let currentStorage = '/littlefs';
+        let currentPath = '/';
+        let activeEditingPath = '';
+        let currentItems = [];
+        let sdCardMounted = false;
+
+        // Theme Engine
+        function setTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('kryonos-theme', theme);
+            document.querySelectorAll('.theme-btn').forEach(btn => btn.classList.remove('active'));
+            const activeBtn = document.getElementById(`theme-${theme}-btn`);
+            if (activeBtn) activeBtn.classList.add('active');
+        }
+
+        // Inline SVG Templates
+        const ICONS = {
+            folder: `<svg class="icon icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>`,
+            folderOpen: `<svg class="icon icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>`,
+            fileCode: `<svg class="icon icon-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/></svg>`,
+            fileBraces: `<svg class="icon icon-json" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 12a1 1 0 0 0-1 1v1a1 1 0 0 1-1 1 1 1 0 0 1 1 1v1a1 1 0 0 0 1 1"/><path d="M14 18a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1 1 1 0 0 1-1-1v-1a1 1 0 0 0-1-1"/></svg>`,
+            fileText: `<svg class="icon icon-text" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>`,
+            fileImage: `<svg class="icon icon-img" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><circle cx="10" cy="12" r="2"/><path d="m20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22"/></svg>`,
+            fileCog: `<svg class="icon icon-bin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 8a1 1 0 0 1-1-1V2a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8z"/><path d="M20 8v12a2 2 0 0 1-2 2h-4.182"/><path d="m3.305 19.53.923-.382"/><path d="M4 10.592V4a2 2 0 0 1 2-2h8"/><path d="m4.228 16.852-.924-.383"/><path d="m5.852 15.228-.383-.923"/><path d="m5.852 20.772-.383.924"/><path d="m8.148 15.228.383-.923"/><path d="m8.53 21.696-.382-.924"/><path d="m9.773 16.852.922-.383"/><path d="m9.773 19.148.922.383"/><circle cx="7" cy="18" r="3"/></svg>`,
+            edit: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v9.34"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10.378 12.622a1 1 0 0 1 3 3.003L8.36 20.637a2 2 0 0 1-.854.506l-2.867.837a.5.5 0 0 1-.62-.62l.836-2.869a2 2 0 0 1 .506-.853z"/></svg>`,
+            rename: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg>`,
+            download: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>`,
+            trash: `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`
+        };
 
         document.addEventListener("DOMContentLoaded", () => {
+            const savedTheme = localStorage.getItem('kryonos-theme') || 'dark';
+            setTheme(savedTheme);
+            fetchStorageTelemetry();
+            fetchGitHubStats();
             loadDirectory();
+            initEditorEngine();
+            initDragAndDrop();
+
+            // Safe low-overhead telemetry polling (every 30 seconds when tab is active)
+            setInterval(() => {
+                if (!document.hidden) {
+                    fetchStorageTelemetry();
+                }
+            }, 30000);
+
+            // Immediately refresh when user switches back to this browser tab
+            window.addEventListener('focus', () => {
+                fetchStorageTelemetry();
+            });
         });
 
+        // --- Client-Side GitHub Fetching (Direct from browser, Zero ESP32 overhead) ---
+        async function fetchGitHubStats() {
+            const cached = localStorage.getItem('kryonos-gh-stats');
+            if (cached) {
+                try {
+                    const data = JSON.parse(cached);
+                    updateGitHubUI(data);
+                } catch(e) {}
+            }
+
+            try {
+                const res = await fetch('https://api.github.com/repos/Haris16-code/KryonOS');
+                if (res.ok) {
+                    const repoData = await res.json();
+                    const stats = {
+                        stars: repoData.stargazers_count,
+                        forks: repoData.forks_count,
+                        openIssues: repoData.open_issues_count,
+                        description: repoData.description || 'Lightweight, modern Embedded OS for ESP32',
+                        updatedAt: Date.now()
+                    };
+                    localStorage.setItem('kryonos-gh-stats', JSON.stringify(stats));
+                    updateGitHubUI(stats);
+                    return;
+                }
+            } catch(e) {}
+
+            try {
+                // Fallback to stargazers count endpoint
+                const countRes = await fetch('https://api.github.com/repos/Haris16-code/KryonOS/stargazers/count');
+                if (countRes.ok) {
+                    const countData = await countRes.json();
+                    const stats = {
+                        stars: countData.count,
+                        updatedAt: Date.now()
+                    };
+                    localStorage.setItem('kryonos-gh-stats', JSON.stringify(stats));
+                    updateGitHubUI(stats);
+                }
+            } catch(e) {
+                console.log("GitHub browser fetch offline, using cache.");
+            }
+        }
+
+        function updateGitHubUI(data) {
+            if (!data) return;
+            if (data.stars !== undefined) {
+                const starText = `★ ${data.stars}`;
+                const headerStars = document.getElementById('header-gh-stars');
+                if (headerStars) headerStars.innerText = starText;
+                
+                const sidebarStars = document.getElementById('sidebar-gh-stars-num');
+                if (sidebarStars) sidebarStars.innerText = data.stars;
+
+                const modalStars = document.getElementById('about-gh-stars');
+                if (modalStars) modalStars.innerText = `${data.stars} Stars`;
+            }
+            if (data.forks !== undefined) {
+                const modalForks = document.getElementById('about-gh-forks');
+                if (modalForks) modalForks.innerText = `${data.forks} Forks`;
+            }
+            if (data.description) {
+                const modalDesc = document.getElementById('about-repo-desc');
+                if (modalDesc) modalDesc.innerText = data.description;
+            }
+        }
+
+        // --- Storage Telemetry ---
+        async function fetchStorageTelemetry() {
+            try {
+                const res = await fetch('/api/storage');
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                // LittleFS
+                if (data.littlefs) {
+                    const total = data.littlefs.total || 1;
+                    const used = data.littlefs.used || 0;
+                    const pct = Math.min(100, Math.round((used / total) * 100));
+                    document.getElementById('lfs-used-text').innerText = `${formatBytes(used)} / ${formatBytes(total)}`;
+                    document.getElementById('lfs-pct-text').innerText = `${pct}%`;
+                    const bar = document.getElementById('lfs-bar');
+                    bar.style.width = `${pct}%`;
+                    bar.className = 'progress-fill' + (pct > 90 ? ' danger' : pct > 75 ? ' warning' : '');
+                }
+
+                // SD Card
+                if (data.sd) {
+                    sdCardMounted = data.sd.mounted;
+                    const sdBadge = document.getElementById('sd-status-badge');
+                    const sdCard = document.getElementById('card-sd');
+                    
+                    if (sdCardMounted) {
+                        sdBadge.className = 'storage-badge badge-mounted';
+                        sdBadge.innerText = 'Mounted';
+                        sdCard.classList.remove('disabled');
+                        const total = data.sd.total || 1;
+                        const used = data.sd.used || 0;
+                        const pct = Math.min(100, Math.round((used / total) * 100));
+                        document.getElementById('sd-used-text').innerText = `${formatBytes(used)} / ${formatBytes(total)}`;
+                        document.getElementById('sd-pct-text').innerText = `${pct}%`;
+                        document.getElementById('sd-bar').style.width = `${pct}%`;
+                    } else {
+                        sdBadge.className = 'storage-badge badge-unmounted';
+                        sdBadge.innerText = 'Not Mounted';
+                        sdCard.classList.add('disabled');
+                        document.getElementById('sd-used-text').innerText = 'Unmounted';
+                        document.getElementById('sd-pct-text').innerText = '0%';
+                        document.getElementById('sd-bar').style.width = '0%';
+                        if (currentStorage === '/sd') {
+                            switchStorage('/littlefs');
+                        }
+                    }
+                }
+
+                // Dynamic System Specs
+                if (data.system) {
+                    const verBadge = document.getElementById('os-ver-badge');
+                    if (data.system.version) {
+                        verBadge.innerText = `v${data.system.version}`;
+                        verBadge.style.display = 'inline-block';
+                        document.title = `KryonOS v${data.system.version} Manager`;
+                    } else {
+                        verBadge.style.display = 'none';
+                    }
+
+                    if (data.system.chip) {
+                        const chipWrap = document.getElementById('telemetry-chip-wrap');
+                        if (chipWrap) {
+                            chipWrap.style.display = 'flex';
+                            document.getElementById('telemetry-chip').innerText = data.system.chip;
+                        }
+                    }
+
+                    if (data.system.heapFree) {
+                        document.getElementById('telemetry-ram').innerText = formatBytes(data.system.heapFree);
+                    }
+
+                    const psramWrap = document.getElementById('telemetry-psram-wrap');
+                    if (data.system.hasPsram && data.system.psramTotal > 0) {
+                        psramWrap.style.display = 'flex';
+                        document.getElementById('telemetry-psram').innerText = formatBytes(data.system.psramFree);
+                    } else {
+                        psramWrap.style.display = 'none';
+                    }
+                }
+            } catch (e) {
+                console.error("Storage telemetry fetch error:", e);
+            }
+        }
+
         function switchStorage(storagePrefix) {
+            if (storagePrefix === '/sd' && !sdCardMounted) {
+                showToast("SD Card is not mounted!", "error");
+                return;
+            }
             currentStorage = storagePrefix;
             currentPath = '/';
-            document.querySelectorAll('.storage-btn').forEach(btn => btn.classList.remove('active'));
-            if(storagePrefix === '/littlefs') document.getElementById('btn-littlefs').classList.add('active');
-            if(storagePrefix === '/sd') document.getElementById('btn-sd').classList.add('active');
+            document.querySelectorAll('.storage-card').forEach(c => c.classList.remove('active'));
+            if (storagePrefix === '/littlefs') document.getElementById('card-littlefs').classList.add('active');
+            if (storagePrefix === '/sd') document.getElementById('card-sd').classList.add('active');
             loadDirectory();
         }
 
         function getAbsolutePath(relPath) {
             let cleanPath = (currentPath === '/') ? '/' + relPath : currentPath + '/' + relPath;
-            // Ensure path prefixes cleanly with storage mount configuration
             return `${currentStorage}${cleanPath}`.replace(/\/+/g, '/');
         }
 
-        // --- API INTEGRATION TARGETS ---
-        // Adjust these fetch calls to reflect your preferred ESP32 routing rules.
-
+        // --- Directory Navigation ---
         async function loadDirectory() {
-            const fullTargetUrl = `/api/list?dir=${encodeURIComponent(currentStorage + currentPath)}`.replace(/\/+/g, '/');
+            const targetUrl = `/api/list?dir=${encodeURIComponent(currentStorage + currentPath)}`.replace(/\/+/g, '/');
             updateBreadcrumbs();
             
-            document.getElementById('file-list-body').innerHTML = '';
+            const tbody = document.getElementById('file-list-body');
+            tbody.innerHTML = '';
             document.getElementById('loader').style.display = 'block';
-            
+
             try {
-                const response = await fetch(fullTargetUrl);
+                const res = await fetch(targetUrl);
                 document.getElementById('loader').style.display = 'none';
-                if (!response.ok) throw new Error("Failed to fetch folder directory listings.");
-                const items = await response.json();
-                renderItems(items);
+                if (!res.ok) throw new Error("List failed");
+                currentItems = await res.json();
+                renderItems(currentItems);
             } catch (err) {
                 document.getElementById('loader').style.display = 'none';
-                console.error(err);
-                // Mock layout populated if file is executed locally without active ESP32 server environment
-                renderItems([
-                    {name: "system_config.json", type: "file", size: 512},
-                    {name: "web_assets", type: "dir", size: 0},
-                    {name: "sensor_log.csv", type: "file", size: 4096}
-                ]);
+                renderItems([]);
             }
+        }
+
+        function getFileIcon(filename, isDir) {
+            if (isDir) return ICONS.folder;
+            const ext = filename.split('.').pop().toLowerCase();
+            if (['js', 'mjs', 'html', 'css', 'ts'].includes(ext)) return ICONS.fileCode;
+            if (['json', 'toml', 'xml'].includes(ext)) return ICONS.fileBraces;
+            if (['png', 'jpg', 'jpeg', 'bmp', 'gif', 'ico'].includes(ext)) return ICONS.fileImage;
+            if (['bin', 'hex', 'elf', 'dat', 'img'].includes(ext)) return ICONS.fileCog;
+            return ICONS.fileText;
         }
 
         function renderItems(items) {
             const tbody = document.getElementById('file-list-body');
             tbody.innerHTML = '';
 
-            // Render navigation up link row if inside subfolders
+            // Go up row
             if (currentPath !== '/') {
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td class="clickable-row" colspan="3" onclick="navigateUp()">📁 .. (Go Back up One Directory)</td>
+                    <td class="clickable-row name-col" colspan="3" onclick="navigateUp()">
+                        ${ICONS.folderOpen}
+                        <span>.. (Parent Directory)</span>
+                    </td>
                 `;
                 tbody.appendChild(tr);
             }
 
-            items.forEach(item => {
+            if (items.length === 0 && currentPath === '/') {
                 const tr = document.createElement('tr');
+                tr.innerHTML = `<td colspan="3" class="empty-state">This directory is empty</td>`;
+                tbody.appendChild(tr);
+                return;
+            }
+
+            // Sort directories first, then alphabetically
+            items.sort((a, b) => {
+                if (a.type === 'dir' && b.type !== 'dir') return -1;
+                if (a.type !== 'dir' && b.type === 'dir') return 1;
+                return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+            });
+
+            items.forEach(item => {
                 const isDir = item.type === 'dir';
-                const icon = isDir ? '📁' : '📄';
+                const icon = getFileIcon(item.name, isDir);
                 const itemAbsPath = getAbsolutePath(item.name);
+                const tr = document.createElement('tr');
 
                 tr.innerHTML = `
-                    <td class="${isDir ? 'clickable-row' : ''}" onclick="${isDir ? `clickDir('${item.name}')` : ''}">
-                        <span class="file-icon">${icon}</span>${item.name}
+                    <td>
+                        <div class="name-col ${isDir ? 'clickable-row' : ''}" onclick="${isDir ? `clickDir('${item.name}')` : ''}">
+                            ${icon}
+                            <span>${escapeHtml(item.name)}</span>
+                        </div>
                     </td>
                     <td>${isDir ? '-' : formatBytes(item.size)}</td>
                     <td class="row-actions">
-                        ${!isDir ? `<button class="btn btn-secondary" onclick="editFile('${itemAbsPath}')">✏️ Edit</button>` : ''}
-                        ${!isDir ? `<button class="btn btn-secondary" onclick="downloadFile('${itemAbsPath}')">📥 Get</button>` : ''}
-                        <button class="btn btn-secondary" onclick="openRenameModal('${item.name}')">✏️ Rename</button>
-                        <button class="btn btn-danger" onclick="deleteItem('${itemAbsPath}')">🗑️ Del</button>
+                        ${!isDir ? `<button class="btn btn-icon-only" onclick="editFile('${itemAbsPath}', '${escapeHtml(item.name)}')" title="Edit">${ICONS.edit}</button>` : ''}
+                        ${!isDir ? `<button class="btn btn-icon-only" onclick="downloadFile('${itemAbsPath}')" title="Download">${ICONS.download}</button>` : ''}
+                        <button class="btn btn-icon-only" onclick="openRenameModal('${item.name}')" title="Rename">${ICONS.rename}</button>
+                        <button class="btn btn-icon-only btn-danger" onclick="deleteItem('${itemAbsPath}', '${escapeHtml(item.name)}')" title="Delete">${ICONS.trash}</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
             });
         }
 
+        function filterFiles() {
+            const query = document.getElementById('search-input').value.toLowerCase().trim();
+            if (!query) {
+                renderItems(currentItems);
+                return;
+            }
+            const filtered = currentItems.filter(item => item.name.toLowerCase().includes(query));
+            renderItems(filtered);
+        }
+
         function clickDir(dirName) {
             currentPath = (currentPath === '/') ? '/' + dirName : currentPath + '/' + dirName;
+            document.getElementById('search-input').value = '';
             loadDirectory();
         }
 
@@ -271,70 +1213,141 @@
             let parts = currentPath.split('/').filter(p => p);
             parts.pop();
             currentPath = '/' + parts.join('/');
+            document.getElementById('search-input').value = '';
             loadDirectory();
         }
 
         function navigateTo(path) {
             currentPath = path;
+            document.getElementById('search-input').value = '';
             loadDirectory();
         }
 
         function refreshDir() {
+            fetchStorageTelemetry();
             loadDirectory();
+            showToast("Directory refreshed", "success");
         }
 
         function updateBreadcrumbs() {
             const container = document.getElementById('breadcrumb-container');
-            container.innerHTML = `Storage Root: <span onclick="navigateTo('/')">${currentStorage}</span>`;
+            let html = `<span class="crumb" onclick="navigateTo('/')">${ICONS.folder} ${currentStorage}</span>`;
             
-            let accumulativePath = '';
+            let accum = '';
             const parts = currentPath.split('/').filter(p => p);
-            
-            parts.forEach(part => {
-                accumulativePath += '/' + part;
-                const freezePath = accumulativePath;
-                container.innerHTML += ` / <span onclick="navigateTo('${freezePath}')">${part}</span>`;
+            parts.forEach((part, idx) => {
+                accum += '/' + part;
+                const pathTarget = accum;
+                html += `<span class="crumb-sep">/</span><span class="crumb" onclick="navigateTo('${pathTarget}')">${escapeHtml(part)}</span>`;
+            });
+            container.innerHTML = html;
+        }
+
+        // ========================================================
+        // VS CODE-STYLE EDITOR ENGINE
+        // ========================================================
+        function initEditorEngine() {
+            const textarea = document.getElementById('editor-textarea');
+            const gutter = document.getElementById('editor-gutter');
+
+            // Sync scrolling
+            textarea.addEventListener('scroll', () => {
+                gutter.scrollTop = textarea.scrollTop;
+            });
+
+            // Sync line numbers and status info on input
+            textarea.addEventListener('input', updateEditorMetrics);
+            textarea.addEventListener('keyup', updateCursorPosition);
+            textarea.addEventListener('click', updateCursorPosition);
+
+            // Tab key support
+            textarea.addEventListener('keydown', (e) => {
+                if (e.key === 'Tab') {
+                    e.preventDefault();
+                    const start = textarea.selectionStart;
+                    const end = textarea.selectionEnd;
+                    const val = textarea.value;
+                    textarea.value = val.substring(0, start) + '    ' + val.substring(end);
+                    textarea.selectionStart = textarea.selectionEnd = start + 4;
+                    updateEditorMetrics();
+                } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                    e.preventDefault();
+                    saveFileContent();
+                } else if (e.key === 'Escape') {
+                    closeModal('editor-modal');
+                }
             });
         }
 
-        // --- FILE CRUD OPERATION IMPLEMENTATIONS ---
+        function updateEditorMetrics() {
+            const textarea = document.getElementById('editor-textarea');
+            const gutter = document.getElementById('editor-gutter');
+            const lines = textarea.value.split('\n').length;
+            
+            let lineNums = '';
+            for (let i = 1; i <= lines; i++) {
+                lineNums += i + '\n';
+            }
+            gutter.innerText = lineNums;
+            document.getElementById('status-lines').innerText = `${lines} ${lines === 1 ? 'line' : 'lines'}`;
+            updateCursorPosition();
+        }
 
-        async function editFile(absoluteFilePath) {
+        function updateCursorPosition() {
+            const textarea = document.getElementById('editor-textarea');
+            const pos = textarea.selectionStart;
+            const text = textarea.value.substring(0, pos);
+            const line = text.split('\n').length;
+            const col = pos - text.lastIndexOf('\n');
+            document.getElementById('status-pos').innerText = `Ln ${line}, Col ${col}`;
+        }
+
+        async function editFile(absoluteFilePath, filename) {
             activeEditingPath = absoluteFilePath;
-            document.getElementById('editor-title').innerText = `Editing: ${absoluteFilePath}`;
-            document.getElementById('editor-textarea').value = "Loading data content...";
+            document.getElementById('editor-tab-title').innerText = filename;
+            document.getElementById('editor-tab-icon').innerHTML = getFileIcon(filename, false);
+            
+            // Detect language
+            const ext = filename.split('.').pop().toLowerCase();
+            const langMap = { js: 'JavaScript', mjs: 'JavaScript', json: 'JSON', html: 'HTML', css: 'CSS', md: 'Markdown', txt: 'Plain Text' };
+            document.getElementById('status-lang').innerText = langMap[ext] || 'Text';
+
+            const textarea = document.getElementById('editor-textarea');
+            textarea.value = "Loading file content...";
+            updateEditorMetrics();
             openModal('editor-modal');
 
             try {
-                const response = await fetch(`/api/edit?path=${encodeURIComponent(absoluteFilePath)}`);
-                if(response.ok) {
-                    const text = await response.text();
-                    document.getElementById('editor-textarea').value = text;
+                const res = await fetch(`/api/edit?path=${encodeURIComponent(absoluteFilePath)}`);
+                if (res.ok) {
+                    const content = await res.text();
+                    textarea.value = content;
                 } else {
-                    alert("Error extracting target file data payload details.");
+                    textarea.value = "// Error loading file content";
                 }
             } catch (err) {
-                document.getElementById('editor-textarea').value = "// Local UI Demo Mode\n{\n  \"status\": \"offline\"\n}";
+                textarea.value = "// Network request failed";
             }
+            updateEditorMetrics();
+            textarea.focus();
         }
 
         async function saveFileContent() {
-            const textData = document.getElementById('editor-textarea').value;
+            const content = document.getElementById('editor-textarea').value;
             try {
-                const response = await fetch(`/api/edit`, {
+                const res = await fetch('/api/edit', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `path=${encodeURIComponent(activeEditingPath)}&content=${encodeURIComponent(textData)}`
+                    body: `path=${encodeURIComponent(activeEditingPath)}&content=${encodeURIComponent(content)}`
                 });
-                if(response.ok) {
-                    closeModal('editor-modal');
-                    loadDirectory();
+                if (res.ok) {
+                    showToast("File saved successfully!", "success");
+                    fetchStorageTelemetry();
                 } else {
-                    alert("Failed to successfully execute modification changes to storage chip.");
+                    showToast("Failed to save file", "error");
                 }
-            } catch(e) {
-                alert("Simulated save success on offline mockup layout dashboard config.");
-                closeModal('editor-modal');
+            } catch (e) {
+                showToast("Network save error", "error");
             }
         }
 
@@ -342,147 +1355,183 @@
             window.open(`/api/download?path=${encodeURIComponent(absoluteFilePath)}`, '_blank');
         }
 
-        async function deleteItem(absoluteFilePath) {
-            if(!confirm(`Are you certain you wish to delete: ${absoluteFilePath}?`)) return;
-            
+        async function deleteItem(absoluteFilePath, itemName) {
+            if (!confirm(`Are you sure you want to delete "${itemName}"?`)) return;
             try {
-                const response = await fetch(`/api/delete`, {
+                const res = await fetch('/api/delete', {
                     method: 'DELETE',
                     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                     body: `path=${encodeURIComponent(absoluteFilePath)}`
                 });
-                if(response.ok) {
+                if (res.ok) {
+                    showToast(`Deleted ${itemName}`, "success");
                     loadDirectory();
+                    fetchStorageTelemetry();
                 } else {
-                    alert("Failed to delete target entry.");
+                    showToast("Failed to delete entry", "error");
                 }
-            } catch(e) {
-                alert("Deleted (Mock Action Sandbox mode active).");
+            } catch (e) {
+                showToast("Delete request failed", "error");
             }
         }
 
+        // --- Modals (Create & Rename) ---
         function openCreateModal(type) {
-            const title = type === 'folder' ? 'Create New Folder' : 'Create New File';
-            const label = type === 'folder' ? 'Folder Name' : 'File Name';
-            
-            document.getElementById('input-modal-title').innerText = title;
-            document.getElementById('input-modal-label').innerText = label;
-            const inputField = document.getElementById('input-modal-value');
-            inputField.value = '';
-            
+            const isFolder = type === 'folder';
+            document.getElementById('input-modal-title').innerText = isFolder ? 'Create New Folder' : 'Create New File';
+            document.getElementById('input-modal-label').innerText = isFolder ? 'Folder Name' : 'File Name (e.g. app.js)';
+            const input = document.getElementById('input-modal-value');
+            input.value = '';
             openModal('input-modal');
-            
+            input.focus();
+
             document.getElementById('input-modal-submit').onclick = async () => {
-                const targetName = inputField.value.trim();
-                if(!targetName) return;
-                
-                const completePath = getAbsolutePath(targetName);
+                const name = input.value.trim();
+                if (!name) return;
+                const path = getAbsolutePath(name);
                 try {
-                    const response = await fetch(`/api/create`, {
+                    const res = await fetch('/api/create', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `path=${encodeURIComponent(completePath)}&type=${type}`
+                        body: `path=${encodeURIComponent(path)}&type=${type}`
                     });
-                    if(response.ok) {
+                    if (res.ok) {
                         closeModal('input-modal');
                         loadDirectory();
+                        fetchStorageTelemetry();
+                        showToast(`Created ${name}`, "success");
                     } else {
-                        alert("Error generating asset container on drive system.");
+                        showToast("Creation failed", "error");
                     }
-                } catch(e) {
+                } catch (e) {
                     closeModal('input-modal');
                 }
             };
         }
 
         function openRenameModal(oldName) {
-            document.getElementById('input-modal-title').innerText = "Rename Item";
-            document.getElementById('input-modal-label').innerText = `New Name for ${oldName}`;
-            const inputField = document.getElementById('input-modal-value');
-            inputField.value = oldName;
-            
+            document.getElementById('input-modal-title').innerText = 'Rename Item';
+            document.getElementById('input-modal-label').innerText = `New name for "${oldName}"`;
+            const input = document.getElementById('input-modal-value');
+            input.value = oldName;
             openModal('input-modal');
-            
+            input.focus();
+
             document.getElementById('input-modal-submit').onclick = async () => {
-                const newName = inputField.value.trim();
-                if(!newName || newName === oldName) { closeModal('input-modal'); return; }
-                
+                const newName = input.value.trim();
+                if (!newName || newName === oldName) { closeModal('input-modal'); return; }
+                const oldPath = getAbsolutePath(oldName);
+                const newPath = getAbsolutePath(newName);
                 try {
-                    const response = await fetch(`/api/rename`, {
+                    const res = await fetch('/api/rename', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                        body: `oldPath=${encodeURIComponent(getAbsolutePath(oldName))}&newPath=${encodeURIComponent(getAbsolutePath(newName))}`
+                        body: `oldPath=${encodeURIComponent(oldPath)}&newPath=${encodeURIComponent(newPath)}`
                     });
-                    if(response.ok) {
+                    if (res.ok) {
                         closeModal('input-modal');
                         loadDirectory();
+                        showToast(`Renamed to ${newName}`, "success");
                     } else {
-                        alert("Error executing modification system parameters rename.");
+                        showToast("Rename failed", "error");
                     }
-                } catch(e) {
+                } catch (e) {
                     closeModal('input-modal');
                 }
             };
         }
 
-        // --- LIVE FILE UPLOADER LOGIC WITH PROGRESS METRICS ---
+        // --- File Upload & Drag-and-Drop ---
+        function handleFileInput(input) {
+            if (input.files.length === 0) return;
+            uploadFileObject(input.files[0]);
+            input.value = '';
+        }
 
-        function uploadFile() {
-            const fileInput = document.getElementById('file-uploader');
-            if (fileInput.files.length === 0) return;
-
-            const file = fileInput.files[0];
+        function uploadFileObject(file) {
             const xhr = new XMLHttpRequest();
             const formData = new FormData();
-            
-            const destinationPath = getAbsolutePath(file.name);
-            formData.append("data", file, destinationPath);
+            const destPath = getAbsolutePath(file.name);
+            formData.append("data", file, destPath);
 
             const progressZone = document.getElementById('upload-progress-zone');
             const progressBar = document.getElementById('upload-progress');
-            
             progressZone.style.display = 'block';
             progressBar.style.width = '0%';
 
             xhr.upload.addEventListener('progress', (e) => {
                 if (e.lengthComputable) {
-                    const percentComplete = (e.loaded / e.total) * 100;
-                    progressBar.style.width = percentComplete + '%';
+                    const pct = (e.loaded / e.total) * 100;
+                    progressBar.style.width = pct + '%';
                 }
             });
 
             xhr.addEventListener('load', () => {
                 progressZone.style.display = 'none';
                 if (xhr.status === 200) {
+                    showToast(`Uploaded ${file.name}`, "success");
                     loadDirectory();
+                    fetchStorageTelemetry();
                 } else {
-                    alert('Upload sequence termination encountered abnormal returns.');
+                    showToast("Upload failed", "error");
                 }
-                fileInput.value = ''; // Reset configuration tracker
             });
 
             xhr.addEventListener('error', () => {
                 progressZone.style.display = 'none';
-                alert('Connection failure interrupted delivery process flow vectors.');
-                fileInput.value = '';
+                showToast("Upload connection error", "error");
             });
 
             xhr.open('POST', '/api/upload', true);
             xhr.send(formData);
         }
 
-        // --- INTERFACE TOOL UTILITIES ---
+        function initDragAndDrop() {
+            const main = document.getElementById('drop-zone-main');
+            const overlay = document.getElementById('drop-overlay');
 
+            ['dragenter', 'dragover'].forEach(name => {
+                main.addEventListener(name, (e) => {
+                    e.preventDefault();
+                    overlay.style.display = 'flex';
+                });
+            });
+
+            ['dragleave', 'drop'].forEach(name => {
+                main.addEventListener(name, (e) => {
+                    e.preventDefault();
+                    overlay.style.display = 'none';
+                });
+            });
+
+            main.addEventListener('drop', (e) => {
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    uploadFileObject(e.dataTransfer.files[0]);
+                }
+            });
+        }
+
+        // --- Utilities ---
         function openModal(id) { document.getElementById(id).style.display = 'flex'; }
         function closeModal(id) { document.getElementById(id).style.display = 'none'; }
 
-        function formatBytes(bytes, decimals = 2) {
-            if (bytes === 0) return '0 Bytes';
+        function showToast(msg, type = 'info') {
+            const toast = document.getElementById('toast');
+            toast.innerText = msg;
+            toast.className = `show ${type}`;
+            setTimeout(() => { toast.className = ''; }, 3000);
+        }
+
+        function formatBytes(bytes, decimals = 1) {
+            if (bytes === 0) return '0 B';
             const k = 1024;
-            const dm = decimals < 0 ? 0 : decimals;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(decimals)) + ' ' + sizes[i];
+        }
+
+        function escapeHtml(str) {
+            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
         }
     </script>
 </body>

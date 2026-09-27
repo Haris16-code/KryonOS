@@ -10,10 +10,14 @@ public:
     static void handleTouch(uint16_t x, uint16_t y);
 
     static void drawAbout();
+    static void drawAboutLoading(int percent, const String& statusText);
     static void handleAboutTouch(uint16_t x, uint16_t y);
 
     static void drawWiFi();
     static void handleWiFiTouch(uint16_t x, uint16_t y);
+
+    static void drawSavedNetworks();
+    static void handleSavedNetworksTouch(uint16_t x, uint16_t y);
 
     static void drawApps();
     static void handleAppsTouch(uint16_t x, uint16_t y);
@@ -29,9 +33,12 @@ public:
     static void drawUpdater(bool isBootCheck = false);
     static void handleUpdaterTouch(uint16_t x, uint16_t y);
     static bool checkUpdateSilent();
+    static void drawOTAProgress(int percent, size_t currentBytes, size_t totalBytes, float speedKBs, const String& status);
+    static void drawOTAError(const String& errorMsg);
 
 private:
     static TFT_eSPI *tftInstance;
+    static bool otaErrorShown;
 };
 
 #endif // SETTINGS_UI_H

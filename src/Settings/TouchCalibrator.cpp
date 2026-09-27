@@ -1,4 +1,5 @@
 #include "TouchCalibrator.h"
+#include "TouchDriver.h"
 #include "../File System/FileSystem.h"
 
 extern int currentState;
@@ -7,6 +8,7 @@ TFT_eSPI *TouchCalibrator::tftInstance = nullptr;
 
 void TouchCalibrator::init(TFT_eSPI *tft) {
     tftInstance = tft;
+    TouchDriver::init(tft);
 }
 
 void TouchCalibrator::runCalibration() {
@@ -19,15 +21,16 @@ void TouchCalibrator::runCalibration() {
     tftInstance->drawString("Touch the arrows at the corners", 120, 100, 2);
 
     uint16_t calData[5];
-    tftInstance->calibrateTouch(calData, TFT_RED, TFT_BLACK, 15);
+    TouchDriver::calibrateTouch(calData, TFT_RED, TFT_BLACK, 15);
 
     tftInstance->fillScreen(TFT_BLACK);
     tftInstance->drawString("Calibration Saved!", 120, 120, 2);
 
     FileSystem::writeCalData(calData);
-    tftInstance->setTouch(calData);
+    TouchDriver::setTouch(calData);
 
     delay(1000);
     // Transition back to Launcher
     currentState = 0; 
 }
+

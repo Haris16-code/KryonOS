@@ -1,0 +1,11 @@
+{
+  "name": "Console API Tester",
+  "packageName": "com.kryonos.consoletest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Interactive diagnostics tool to test, benchmark, and verify all JavaScript console and serial logging APIs.",
+  "type": "Utility",
+  "category": "Diagnostics",
+  "api": 2,
+  "main": "main.js"
+}

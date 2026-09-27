@@ -1,0 +1,11 @@
+{
+  "name": "Network & REST Tester",
+  "packageName": "com.kryonos.nettest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Interactive testing tool for HTTP/REST requests, streaming downloads, WebSockets, and WiFi diagnostics.",
+  "type": "Utility",
+  "category": "Network",
+  "api": 2,
+  "main": "main.js"
+}

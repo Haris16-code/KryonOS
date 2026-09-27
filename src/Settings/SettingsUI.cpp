@@ -1,4 +1,5 @@
 #include "SettingsUI.h"
+#include "TouchDriver.h"
 #include <SD.h>
 #include <LittleFS.h>
 #include "../File System/FileSystem.h"
@@ -7,8 +8,13 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
+#include <esp_task_wdt.h>
+#include "../Kernel/WiFiManager.h"
+#include "../Kernel/Services/OTA/OTAManager.h"
 
 TFT_eSPI *SettingsUI::tftInstance = nullptr;
+bool SettingsUI::otaErrorShown = false;
 bool showResetDialog = false;
 
 void SettingsUI::init(TFT_eSPI *tft) {
@@ -127,30 +133,69 @@ void SettingsUI::drawWiFi() {
     tftInstance->setTextDatum(MC_DATUM);
     tftInstance->drawString("WiFi Options", 120, 21, 2);
 
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Enable or Disable", 120, 80, 2);
-    tftInstance->drawString("WiFi and FTP System.", 120, 100, 2);
+    // Live Status Card (y: 40 to 118)
+    tftInstance->fillRoundRect(10, 40, 220, 78, 6, 0x10A2); // Dark navy
+    tftInstance->drawRoundRect(10, 40, 220, 78, 6, TFT_CYAN);
 
-    bool wifiDisabled = FileSystem::exists("/local/nowifi.txt");
-    if (wifiDisabled) {
-        tftInstance->fillRoundRect(60, 140, 120, 40, 4, TFT_DARKGREY);
-        tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
-        tftInstance->drawString("WiFi: OFF", 120, 160, 2);
+    bool enabled = WiFiManager::isEnabled();
+    bool connected = WiFiManager::isConnected();
+    bool online = WiFiManager::hasInternet();
+
+    tftInstance->setTextDatum(TL_DATUM);
+    if (!enabled) {
+        tftInstance->setTextColor(TFT_DARKGREY, 0x10A2);
+        tftInstance->drawString("Status: DISABLED", 18, 48, 2);
+        tftInstance->drawString("WiFi radio is turned off", 18, 68, 2);
+        tftInstance->drawString("to conserve battery/RAM.", 18, 88, 2);
+    } else if (!connected) {
+        tftInstance->setTextColor(TFT_RED, 0x10A2);
+        tftInstance->drawString("Status: DISCONNECTED", 18, 48, 2);
+        tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+        tftInstance->drawString("No network connected", 18, 70, 2);
+        tftInstance->drawString("Scan to find networks", 18, 90, 2);
     } else {
-        tftInstance->fillRoundRect(60, 140, 120, 40, 4, TFT_BLUE);
-        tftInstance->setTextColor(TFT_WHITE, TFT_BLUE);
-        tftInstance->drawString("WiFi: ON", 120, 160, 2);
-        
-        bool hasWifiCredentials = FileSystem::exists("/sd/wifi.txt") || FileSystem::exists("/local/wifi.txt");
-        if (hasWifiCredentials) {
-            tftInstance->fillRoundRect(60, 195, 120, 30, 4, TFT_RED);
-            tftInstance->setTextColor(TFT_WHITE, TFT_RED);
-            tftInstance->drawString("Forget Network", 120, 210, 2);
+        // Connected!
+        tftInstance->setTextColor(online ? TFT_GREEN : TFT_ORANGE, 0x10A2);
+        String statusText = online ? "Status: ONLINE" : "Status: LOCAL ONLY";
+        tftInstance->drawString(statusText, 18, 46, 2);
+
+        // Signal bars icon (upper right of card)
+        int bars = WiFiManager::getSignalBars();
+        int sx = 195, sy = 62;
+        for (int b = 1; b <= 4; b++) {
+            uint16_t bColor = (b <= bars) ? (online ? TFT_GREEN : TFT_ORANGE) : TFT_DARKGREY;
+            tftInstance->fillRect(sx + (b - 1) * 6, sy - (b * 3), 4, b * 3, bColor);
         }
-        
-        tftInstance->fillRoundRect(40, 240, 160, 30, 4, TFT_ORANGE);
+
+        tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+        String ssid = WiFiManager::getSSID();
+        if (ssid.length() > 16) ssid = ssid.substring(0, 14) + "..";
+        tftInstance->drawString("SSID: " + ssid, 18, 66, 2);
+        tftInstance->drawString("IP:   " + WiFiManager::getIP(), 18, 86, 2);
+    }
+
+    // Button 1: WiFi ON/OFF Toggle (y: 124, h: 34)
+    tftInstance->fillRoundRect(12, 124, 216, 34, 5, enabled ? TFT_BLUE : TFT_DARKGREY);
+    tftInstance->setTextColor(TFT_WHITE, enabled ? TFT_BLUE : TFT_DARKGREY);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString(enabled ? "WiFi: ON (Tap to Disable)" : "WiFi: OFF (Tap to Enable)", 120, 141, 2);
+
+    if (enabled) {
+        // Button 2: Scan Nearby Networks (y: 164, h: 34)
+        tftInstance->fillRoundRect(12, 164, 216, 34, 5, TFT_PURPLE);
+        tftInstance->setTextColor(TFT_WHITE, TFT_PURPLE);
+        tftInstance->drawString("Scan Nearby Networks", 120, 181, 2);
+
+        // Button 3: Saved Networks (y: 204, h: 34)
+        int savedCount = (int)WiFiManager::getSavedNetworks().size();
+        tftInstance->fillRoundRect(12, 204, 216, 34, 5, 0x03E0 /* Forest Green */);
+        tftInstance->setTextColor(TFT_WHITE, 0x03E0);
+        tftInstance->drawString("Saved Networks (" + String(savedCount) + ")", 120, 221, 2);
+
+        // Button 4: Start Web Server (y: 244, h: 34)
+        tftInstance->fillRoundRect(12, 244, 216, 34, 5, TFT_ORANGE);
         tftInstance->setTextColor(TFT_WHITE, TFT_ORANGE);
-        tftInstance->drawString("Start Web Server", 120, 255, 2);
+        tftInstance->drawString("Launch Web Server", 120, 261, 2);
     }
 
     // Touch Footer
@@ -163,56 +208,40 @@ void SettingsUI::drawWiFi() {
 void SettingsUI::handleWiFiTouch(uint16_t x, uint16_t y) {
     extern int currentState;
 
-    if (x >= 60 && x <= 180 && y >= 140 && y <= 180) {
-        bool wifiDisabled = FileSystem::exists("/local/nowifi.txt");
-        if (wifiDisabled) {
-            // User is turning WiFi ON
-            FileSystem::deleteFile("/local/nowifi.txt");
+    // WiFi Toggle Button (y: 124 to 158)
+    if (x >= 12 && x <= 228 && y >= 124 && y <= 158) {
+        bool enabled = WiFiManager::isEnabled();
+        WiFiManager::setEnabled(!enabled);
 
-            // Check if wifi credentials exist
-            bool hasWifiCredentials = FileSystem::exists("/sd/wifi.txt") || FileSystem::exists("/local/wifi.txt");
-            if (!hasWifiCredentials) {
-                // Launch the Visual WiFi Scanner
+        if (!enabled) {
+            // Turning ON -> if no saved networks, scan immediately
+            if (WiFiManager::getSavedNetworks().empty()) {
                 scanAndConnectWiFi();
-                return; // scanAndConnectWiFi will handle rebooting or returning
-            }
-        } else {
-            // User is turning WiFi OFF
-            FileSystem::writeTextFile("/local/nowifi.txt", "1");
-        }
-        
-        tftInstance->fillScreen(TFT_BLACK);
-        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("Rebooting to Apply...", 120, 160, 2);
-        delay(1000);
-        ESP.restart();
-    }
-
-    // Forget Network Button
-    if (x >= 60 && x <= 180 && y >= 195 && y <= 225) {
-        bool wifiDisabled = FileSystem::exists("/local/nowifi.txt");
-        if (!wifiDisabled) {
-            bool hasWifiCredentials = FileSystem::exists("/sd/wifi.txt") || FileSystem::exists("/local/wifi.txt");
-            if (hasWifiCredentials) {
-                if (FileSystem::exists("/sd/wifi.txt")) FileSystem::deleteFile("/sd/wifi.txt");
-                if (FileSystem::exists("/local/wifi.txt")) FileSystem::deleteFile("/local/wifi.txt");
-                
-                tftInstance->fillScreen(TFT_BLACK);
-                tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-                tftInstance->setTextDatum(MC_DATUM);
-                tftInstance->drawString("Network Forgot!", 120, 160, 2);
-                delay(1000);
-                drawWiFi();
                 return;
+            } else {
+                WiFiManager::smartAutoConnect();
             }
         }
+        drawWiFi();
+        return;
     }
 
-    // Web Server Button
-    if (x >= 40 && x <= 200 && y >= 240 && y <= 270) {
-        bool wifiDisabled = FileSystem::exists("/local/nowifi.txt");
-        if (!wifiDisabled) {
+    if (WiFiManager::isEnabled()) {
+        // Scan Networks Button (y: 164 to 198)
+        if (x >= 12 && x <= 228 && y >= 164 && y <= 198) {
+            scanAndConnectWiFi();
+            return;
+        }
+
+        // Saved Networks Button (y: 204 to 238)
+        if (x >= 12 && x <= 228 && y >= 204 && y <= 238) {
+            currentState = 15; // STATE_SETTINGS_WIFI_SAVED
+            drawSavedNetworks();
+            return;
+        }
+
+        // Web Server Button (y: 244 to 278)
+        if (x >= 12 && x <= 228 && y >= 244 && y <= 278) {
             currentState = 5; // STATE_WEB_APP
             return;
         }
@@ -227,10 +256,12 @@ void SettingsUI::handleWiFiTouch(uint16_t x, uint16_t y) {
 }
 
 // ----------------------------------------------------
-// ABOUT DEVICE MENU
+// SAVED NETWORKS MANAGEMENT MENU
 // ----------------------------------------------------
 
-void SettingsUI::drawAbout() {
+static int savedNetScroll = 0;
+
+void SettingsUI::drawSavedNetworks() {
     tftInstance->fillScreen(TFT_BLACK);
     tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
     
@@ -239,63 +270,399 @@ void SettingsUI::drawAbout() {
     tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
     tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("About Device", 120, 21, 2);
+    tftInstance->drawString("Saved Networks", 120, 21, 2);
+
+    auto saved = WiFiManager::getSavedNetworks();
+    if (saved.empty()) {
+        tftInstance->setTextColor(TFT_DARKGREY, TFT_BLACK);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("No saved networks.", 120, 140, 2);
+        tftInstance->drawString("Scan and connect to add!", 120, 165, 2);
+    } else {
+        int itemsPerPage = 4;
+        int yPos = 42;
+        String curSSID = WiFiManager::getSSID();
+
+        for (int i = 0; i < itemsPerPage; i++) {
+            int idx = savedNetScroll + i;
+            if (idx >= (int)saved.size()) break;
+
+            const auto& net = saved[idx];
+            bool isCurrent = WiFiManager::isConnected() && net.ssid.equalsIgnoreCase(curSSID);
+
+            // Card background
+            tftInstance->fillRoundRect(10, yPos, 220, 52, 5, isCurrent ? 0x02E0 : 0x18C3);
+            tftInstance->drawRoundRect(10, yPos, 220, 52, 5, isCurrent ? TFT_GREEN : TFT_WHITE);
+
+            // SSID text
+            tftInstance->setTextDatum(TL_DATUM);
+            tftInstance->setTextColor(TFT_WHITE, isCurrent ? 0x02E0 : 0x18C3);
+            String displaySSID = net.ssid;
+            if (displaySSID.length() > 14) displaySSID = displaySSID.substring(0, 12) + "..";
+            tftInstance->drawString(displaySSID, 18, yPos + 8, 2);
+
+            // Active or Connect badge
+            if (isCurrent) {
+                tftInstance->setTextColor(TFT_GREEN, 0x02E0);
+                tftInstance->drawString("Connected", 18, yPos + 30, 2);
+            } else {
+                tftInstance->setTextColor(TFT_CYAN, 0x18C3);
+                tftInstance->drawString("Tap to Connect", 18, yPos + 30, 2);
+            }
+
+            // Forget Button
+            tftInstance->fillRoundRect(155, yPos + 10, 65, 32, 4, TFT_RED);
+            tftInstance->setTextColor(TFT_WHITE, TFT_RED);
+            tftInstance->setTextDatum(MC_DATUM);
+            tftInstance->drawString("Forget", 187, yPos + 26, 2);
+
+            yPos += 58;
+        }
+    }
+
+    // Touch Footer
+    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString("BACK", 120, 300, 2);
+}
+
+void SettingsUI::handleSavedNetworksTouch(uint16_t x, uint16_t y) {
+    extern int currentState;
+    auto saved = WiFiManager::getSavedNetworks();
+
+    if (!saved.empty()) {
+        int itemsPerPage = 4;
+        int checkY = 42;
+
+        for (int i = 0; i < itemsPerPage; i++) {
+            int idx = savedNetScroll + i;
+            if (idx >= (int)saved.size()) break;
+
+            // Check if Forget button was tapped (x: 155 to 220)
+            if (x >= 155 && x <= 220 && y >= checkY + 10 && y <= checkY + 42) {
+                String toForget = saved[idx].ssid;
+                WiFiManager::forgetNetwork(toForget);
+
+                tftInstance->fillScreen(TFT_BLACK);
+                tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+                tftInstance->setTextDatum(MC_DATUM);
+                tftInstance->drawString("Network Forgot!", 120, 160, 2);
+                delay(800);
+                drawSavedNetworks();
+                return;
+            }
+
+            // Check if card body was tapped to connect (x: 10 to 150)
+            if (x >= 10 && x <= 150 && y >= checkY && y <= checkY + 52) {
+                String toConnect = saved[idx].ssid;
+                String pass = saved[idx].password;
+
+                tftInstance->fillScreen(TFT_BLACK);
+                tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+                tftInstance->setTextDatum(MC_DATUM);
+                tftInstance->drawString("Connecting to", 120, 140, 2);
+                tftInstance->drawString(toConnect + "...", 120, 165, 2);
+
+                bool success = WiFiManager::connectTo(toConnect, pass, 10000);
+                tftInstance->fillScreen(TFT_BLACK);
+                tftInstance->setTextColor(success ? TFT_GREEN : TFT_RED, TFT_BLACK);
+                tftInstance->drawString(success ? "Connected!" : "Connection Failed", 120, 160, 2);
+                delay(1000);
+                drawSavedNetworks();
+                return;
+            }
+
+            checkY += 58;
+        }
+    }
+
+    // Bottom Nav: BACK
+    if (y >= 285) {
+        if (x > 60 && x < 180) {
+            currentState = 6; // STATE_SETTINGS_WIFI
+            drawWiFi();
+        }
+    }
+}
+
+// ----------------------------------------------------
+// ABOUT DEVICE MENU & GITHUB COMMUNITY
+// ----------------------------------------------------
+
+static int s_cachedGitHubStars = -1;
+static bool s_lastFetchLive = false;
+static unsigned long s_lastFetchTime = 0;
+
+static int loadCachedStars() {
+    if (s_cachedGitHubStars > 0) return s_cachedGitHubStars;
+    if (LittleFS.exists("/local/system/stars_cache.json")) {
+        File f = LittleFS.open("/local/system/stars_cache.json", "r");
+        if (f) {
+            JsonDocument doc;
+            DeserializationError err = deserializeJson(doc, f);
+            f.close();
+            if (!err) {
+                if (doc.containsKey("count")) {
+                    s_cachedGitHubStars = doc["count"].as<int>();
+                } else if (doc.containsKey("stargazers_count")) {
+                    s_cachedGitHubStars = doc["stargazers_count"].as<int>();
+                }
+            }
+        }
+    }
+    if (s_cachedGitHubStars <= 0) {
+        s_cachedGitHubStars = 85; // Default fallback baseline
+    }
+    return s_cachedGitHubStars;
+}
+
+static void saveCachedStars(int stars) {
+    if (stars <= 0) return;
+    s_cachedGitHubStars = stars;
+    if (!LittleFS.exists("/local/system")) {
+        LittleFS.mkdir("/local/system");
+    }
+    File f = LittleFS.open("/local/system/stars_cache.json", FILE_WRITE);
+    if (f) {
+        JsonDocument doc;
+        doc["count"] = stars;
+        serializeJson(doc, f);
+        f.close();
+    }
+}
+
+static bool fetchGitHubStarsLive() {
+    if (WiFi.status() != WL_CONNECTED) {
+        s_lastFetchLive = false;
+        return false;
+    }
+
+    WiFiClientSecure client;
+    client.setInsecure();
+    client.setTimeout(2500);
+
+    HTTPClient http;
+    http.setTimeout(2500);
+
+    if (!http.begin(client, "https://api.github.com/repos/Haris16-code/KryonOS/stargazers/count")) {
+        s_lastFetchLive = false;
+        return false;
+    }
+
+    http.setUserAgent("KryonOS-Device");
+    http.addHeader("Accept", "application/vnd.github.v3+json");
+
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK) {
+        String payload = http.getString();
+        http.end();
+
+        JsonDocument doc;
+        DeserializationError err = deserializeJson(doc, payload);
+        if (!err) {
+            int stars = -1;
+            if (doc.containsKey("count")) {
+                stars = doc["count"].as<int>();
+            } else if (doc.containsKey("stargazers_count")) {
+                stars = doc["stargazers_count"].as<int>();
+            }
+            if (stars >= 0) {
+                saveCachedStars(stars);
+                s_lastFetchLive = true;
+                s_lastFetchTime = millis();
+                return true;
+            }
+        }
+    } else {
+        http.end();
+    }
+
+    s_lastFetchLive = false;
+    return false;
+}
+
+static void drawMiniStar(TFT_eSPI *tft, int cx, int cy, uint16_t color) {
+    if (!tft) return;
+    tft->fillTriangle(cx, cy - 5, cx - 2, cy + 3, cx + 2, cy + 3, color);
+    tft->fillTriangle(cx - 5, cy - 2, cx + 5, cy - 2, cx, cy + 3, color);
+    tft->fillTriangle(cx - 3, cy + 2, cx + 3, cy + 2, cx, cy - 4, color);
+}
+
+static void drawMiniHeart(TFT_eSPI *tft, int cx, int cy, uint16_t color) {
+    if (!tft) return;
+    tft->fillCircle(cx - 2, cy - 2, 2, color);
+    tft->fillCircle(cx + 2, cy - 2, 2, color);
+    tft->fillTriangle(cx - 4, cy - 1, cx + 4, cy - 1, cx, cy + 4, color);
+}
+
+static void drawMiniSparkle(TFT_eSPI *tft, int cx, int cy, uint16_t color) {
+    if (!tft) return;
+    tft->fillTriangle(cx, cy - 4, cx - 3, cy, cx + 3, cy, color);
+    tft->fillTriangle(cx, cy + 4, cx - 3, cy, cx + 3, cy, color);
+    tft->drawPixel(cx, cy, TFT_WHITE);
+}
+
+void SettingsUI::drawAboutLoading(int percent, const String& statusText) {
+    if (!tftInstance) return;
+
+    tftInstance->fillScreen(TFT_BLACK);
+    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
+
+    // Header Bar
+    tftInstance->fillRoundRect(6, 6, 228, 28, 5, TFT_BLACK);
+    tftInstance->drawRoundRect(6, 6, 228, 28, 5, TFT_GREEN);
+    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString("About Device", 120, 20, 2);
+
+    // Loading Card
+    tftInstance->fillRoundRect(10, 85, 220, 130, 6, 0x10A2); // Dark cyber navy
+    tftInstance->drawRoundRect(10, 85, 220, 130, 6, TFT_CYAN);
+
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+    tftInstance->drawString("Loading System Info...", 120, 110, 2);
+
+    // Progress Bar Outline
+    int barX = 24;
+    int barY = 138;
+    int barW = 192;
+    int barH = 16;
+    tftInstance->drawRoundRect(barX, barY, barW, barH, 4, TFT_WHITE);
+    tftInstance->fillRect(barX + 2, barY + 2, barW - 4, barH - 4, TFT_BLACK);
+
+    // Filled Bar
+    int fillW = (percent * (barW - 4)) / 100;
+    if (fillW > 0) {
+        tftInstance->fillRect(barX + 2, barY + 2, fillW, barH - 4, TFT_GREEN);
+    }
+
+    tftInstance->setTextColor(TFT_YELLOW, 0x10A2);
+    tftInstance->drawString(statusText.c_str(), 120, 175, 2);
+
+    tftInstance->setTextColor(TFT_DARKGREY, 0x10A2);
+    tftInstance->drawString(String(percent) + "%", 120, 196, 2);
+}
+
+void SettingsUI::drawAbout() {
+    if (!tftInstance) return;
+
+    // Show initial loading stage
+    drawAboutLoading(25, "Reading Hardware & Storage...");
+
+    // Trigger auto-fetch if connected and stale
+    if (WiFi.status() == WL_CONNECTED && (!s_lastFetchLive || millis() - s_lastFetchTime > 30000)) {
+        drawAboutLoading(60, "Loading...");
+        fetchGitHubStarsLive();
+        drawAboutLoading(90, "Finalizing System Info...");
+    } else {
+        drawAboutLoading(70, "Loading Cached Telemetry...");
+        loadCachedStars();
+        drawAboutLoading(95, "Finalizing System Info...");
+    }
+
+    tftInstance->fillScreen(TFT_BLACK);
+    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
+
+    // Header Bar
+    tftInstance->fillRoundRect(6, 6, 228, 28, 5, TFT_BLACK);
+    tftInstance->drawRoundRect(6, 6, 228, 28, 5, TFT_GREEN);
+    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString("About Device", 120, 20, 2);
 
     // Get Storage Info
     uint64_t fsTotal = LittleFS.totalBytes();
     uint64_t fsUsed = LittleFS.usedBytes();
     uint64_t fsFree = fsTotal - fsUsed;
 
-    uint64_t sdTotal = SD.totalBytes();
-    uint64_t sdUsed = SD.usedBytes();
+    uint64_t sdTotal = FileSystem::isSDMounted() ? SD.totalBytes() : 0;
+    uint64_t sdUsed = FileSystem::isSDMounted() ? SD.usedBytes() : 0;
     uint64_t sdFree = sdTotal - sdUsed;
 
-    tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
-    tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString("Internal Memory (LittleFS)", 15, 40, 2);
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Total: " + formatBytes(fsTotal), 25, 60, 2);
-    tftInstance->drawString("Used:  " + formatBytes(fsUsed), 25, 80, 2);
-    tftInstance->drawString("Free:  " + formatBytes(fsFree), 25, 100, 2);
+    // 1. Hardware & System Card
+    tftInstance->fillRoundRect(10, 36, 220, 92, 6, 0x10A2); // Dark cyber navy
+    tftInstance->drawRoundRect(10, 36, 220, 92, 6, 0x2945);
 
-    tftInstance->setTextColor(TFT_ORANGE, TFT_BLACK);
-    tftInstance->drawString("External Memory (SD Card)", 15, 125, 2);
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    if (sdTotal > 0) {
-        tftInstance->drawString("Total: " + formatBytes(sdTotal), 25, 145, 2);
-        tftInstance->drawString("Used:  " + formatBytes(sdUsed), 25, 165, 2);
-        tftInstance->drawString("Free:  " + formatBytes(sdFree), 25, 185, 2);
-    } else {
-        tftInstance->setTextColor(TFT_RED, TFT_BLACK);
-        tftInstance->drawString("SD Card not mounted!", 25, 145, 2);
+    tftInstance->setTextDatum(TL_DATUM);
+    tftInstance->setTextColor(TFT_GREEN, 0x10A2);
+    tftInstance->drawString(String("KryonOS v") + KRYONOS_VERSION, 18, 42, 2);
+
+    tftInstance->setTextColor(TFT_CYAN, 0x10A2);
+    tftInstance->drawString("Flash:", 18, 62, 2);
+    tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+    tftInstance->drawString(formatBytes(fsTotal) + " (" + formatBytes(fsFree) + " free)", 62, 62, 2);
+
+    tftInstance->setTextColor(TFT_ORANGE, 0x10A2);
+    tftInstance->drawString("SD:", 18, 82, 2);
+    tftInstance->setTextColor(sdTotal > 0 ? TFT_WHITE : TFT_RED, 0x10A2);
+    String sdStr = (sdTotal > 0) ? (formatBytes(sdTotal) + " (" + formatBytes(sdFree) + " free)") : "Not mounted";
+    tftInstance->drawString(sdStr, 46, 82, 2);
+
+    tftInstance->setTextColor(TFT_MAGENTA, 0x10A2);
+    tftInstance->drawString("RAM:", 18, 102, 2);
+    tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+    String ramStr = String(ESP.getFreeHeap() / 1024) + " KB";
+#if defined(BOARD_HAS_PSRAM)
+    if (psramFound()) {
+        ramStr += " | PS: " + formatBytes(ESP.getFreePsram());
     }
-    
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Free Heap: " + String(ESP.getFreeHeap() / 1024) + " KB", 15, 205, 2);
-    
-    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
-    tftInstance->drawString(String("KryonOS ") + KRYONOS_VERSION, 15, 222, 2);
+#endif
+    tftInstance->drawString(ramStr, 58, 102, 2);
+
+    // 2. Community & Project Card
+    tftInstance->fillRoundRect(10, 134, 220, 106, 6, 0x10A2);
+    tftInstance->drawRoundRect(10, 134, 220, 106, 6, 0x05BF);
+
+    tftInstance->setTextColor(TFT_CYAN, 0x10A2);
+    tftInstance->drawString("Community & Project", 18, 140, 2);
+
+    // Row 1: GitHub Stars
+    drawMiniStar(tftInstance, 22, 170, TFT_YELLOW);
+    tftInstance->setTextColor(TFT_YELLOW, 0x10A2);
+    tftInstance->drawString("Stars:", 32, 162, 2);
+    int starsCount = loadCachedStars();
+    int roundedTier = (starsCount / 5) * 5;
+    String starsStr = s_lastFetchLive ? (String(starsCount) + " (Live)") : (String(roundedTier) + "+ stars");
+    tftInstance->setTextColor(s_lastFetchLive ? TFT_GREEN : 0xFEA0, 0x10A2);
+    tftInstance->drawString(starsStr, 80, 162, 2);
+
+    // Row 2: Community URL
+    drawMiniHeart(tftInstance, 22, 192, 0xF81F);
+    tftInstance->setTextColor(0xF81F, 0x10A2);
+    tftInstance->drawString("Repo:", 32, 184, 2);
+    tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+    tftInstance->drawString("Haris16-code/KryonOS", 74, 184, 2);
+
+    // Row 3: Author
+    drawMiniSparkle(tftInstance, 22, 214, TFT_CYAN);
+    tftInstance->setTextColor(TFT_CYAN, 0x10A2);
+    tftInstance->drawString("Author:", 32, 206, 2);
+    tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+    tftInstance->drawString("Haris (@Haris16-code)", 84, 206, 2);
 
     // Reset Apps Button
-    tftInstance->fillRoundRect(60, 250, 120, 30, 4, TFT_RED);
+    tftInstance->fillRoundRect(40, 248, 160, 28, 4, TFT_RED);
     tftInstance->setTextColor(TFT_WHITE, TFT_RED);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Reset App Data", 120, 265, 2);
+    tftInstance->drawString("Reset App Data", 120, 262, 2);
 
     extern bool showResetDialog;
     if (showResetDialog) {
         tftInstance->fillRoundRect(10, 80, 220, 160, 8, TFT_DARKGREY);
+        tftInstance->drawRoundRect(10, 80, 220, 160, 8, TFT_RED);
         tftInstance->setTextColor(TFT_YELLOW, TFT_DARKGREY);
         tftInstance->setTextDatum(MC_DATUM);
         tftInstance->drawString("WARNING!", 120, 110, 4);
         tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
         tftInstance->drawString("Format LittleFS &", 120, 140, 2);
         tftInstance->drawString("Delete all Apps?", 120, 160, 2);
-        
+
         tftInstance->fillRoundRect(30, 190, 70, 30, 4, TFT_RED);
         tftInstance->setTextColor(TFT_WHITE, TFT_RED);
         tftInstance->drawString("Yes", 65, 205, 2);
-        
+
         tftInstance->fillRoundRect(140, 190, 70, 30, 4, TFT_GREEN);
         tftInstance->setTextColor(TFT_BLACK, TFT_GREEN);
         tftInstance->drawString("No", 175, 205, 2);
@@ -319,9 +686,9 @@ void SettingsUI::handleAboutTouch(uint16_t x, uint16_t y) {
                 tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
                 tftInstance->setTextDatum(MC_DATUM);
                 tftInstance->drawString("Formatting...", 120, 160, 4);
-                
+
                 FileSystem::formatLittleFS();
-                
+
                 tftInstance->drawString("Rebooting...", 120, 200, 4);
                 delay(1000);
                 ESP.restart();
@@ -333,8 +700,20 @@ void SettingsUI::handleAboutTouch(uint16_t x, uint16_t y) {
         return;
     }
 
+    // Community Card Touched (Tap to refresh Live Stars)
+    if (x >= 10 && x <= 230 && y >= 134 && y <= 240) {
+        if (WiFi.status() == WL_CONNECTED) {
+            tftInstance->setTextColor(TFT_YELLOW, 0x10A2);
+            tftInstance->setTextDatum(TL_DATUM);
+            tftInstance->drawString("Fetching...", 80, 162, 2);
+            fetchGitHubStarsLive();
+            drawAbout();
+        }
+        return;
+    }
+
     // Reset Button Touched
-    if (x >= 60 && x <= 180 && y >= 250 && y <= 280) {
+    if (x >= 40 && x <= 200 && y >= 248 && y <= 278) {
         showResetDialog = true;
         drawAbout();
         return;
@@ -877,21 +1256,38 @@ void SettingsUI::scanAndConnectWiFi() {
     tftInstance->drawString("WiFi Scanner", 120, 21, 2);
 
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Scanning for networks...", 120, 160, 2);
+    tftInstance->drawString("Scanning 2.4GHz Networks...", 120, 140, 2);
 
-    // Initialize WiFi in Station Mode and scan
+    // Initialize WiFi in Station Mode and start async scan
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
-    delay(100);
-    int n = WiFi.scanNetworks();
+    delay(50);
+    WiFi.scanNetworks(true); // Async scan
 
-    if (n == 0) {
+    // Animated spinner while scanning
+    int spinAngle = 0;
+    int16_t scanStatus = WIFI_SCAN_RUNNING;
+    while ((scanStatus = WiFi.scanComplete()) == WIFI_SCAN_RUNNING) {
+        // Draw spinning radar / circle
+        int cx = 120, cy = 190, r = 18;
+        tftInstance->drawCircle(cx, cy, r, TFT_DARKGREY);
+        float rad = spinAngle * (PI / 180.0f);
+        int px = cx + (int)(cos(rad) * r);
+        int py = cy + (int)(sin(rad) * r);
+        tftInstance->fillCircle(px, py, 4, TFT_CYAN);
+        delay(40);
+        tftInstance->fillCircle(px, py, 4, TFT_BLACK); // clear dot
+        spinAngle = (spinAngle + 30) % 360;
+        esp_task_wdt_reset();
+    }
+
+    int n = WiFi.scanComplete();
+
+    if (n <= 0) {
         tftInstance->fillScreen(TFT_BLACK);
         tftInstance->setTextColor(TFT_RED, TFT_BLACK);
         tftInstance->drawString("No networks found.", 120, 160, 2);
-        delay(2000);
-        // Revert WiFi ON request
-        FileSystem::writeTextFile("/local/nowifi.txt", "1");
+        delay(1500);
         drawWiFi();
         return;
     }
@@ -899,7 +1295,8 @@ void SettingsUI::scanAndConnectWiFi() {
     int currentPage = 0;
     int networksPerPage = 5;
     int totalPages = (n + networksPerPage - 1) / networksPerPage;
-    
+    auto savedNets = WiFiManager::getSavedNetworks();
+
     while (true) {
         tftInstance->fillScreen(TFT_BLACK);
         tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
@@ -907,70 +1304,91 @@ void SettingsUI::scanAndConnectWiFi() {
         tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
         tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("Select Network", 120, 21, 2);
+        tftInstance->drawString("Select Network (" + String(n) + ")", 120, 21, 2);
 
         int startIdx = currentPage * networksPerPage;
         int endIdx = startIdx + networksPerPage;
         if (endIdx > n) endIdx = n;
 
-        int yPos = 50;
+        int yPos = 46;
         tftInstance->setTextDatum(TL_DATUM);
         for (int i = startIdx; i < endIdx; i++) {
-            // Draw button
-            tftInstance->fillRoundRect(10, yPos, 220, 40, 5, TFT_DARKGREY);
-            
             String ssid = WiFi.SSID(i);
-            if (ssid.length() > 18) ssid = ssid.substring(0, 15) + "..."; // Truncate long SSIDs
-            
-            tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
-            tftInstance->drawString(ssid, 20, yPos + 10, 2);
+            int rssi = WiFi.RSSI(i);
+            bool isSaved = false;
+            for (const auto& s : savedNets) {
+                if (s.ssid.equalsIgnoreCase(ssid)) { isSaved = true; break; }
+            }
 
-            // Draw lock icon or open text
-            if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) {
+            // Draw card
+            tftInstance->fillRoundRect(10, yPos, 220, 42, 5, isSaved ? 0x18C3 : TFT_DARKGREY);
+            tftInstance->drawRoundRect(10, yPos, 220, 42, 5, isSaved ? TFT_CYAN : TFT_WHITE);
+            
+            String displaySSID = ssid;
+            if (displaySSID.length() > 14) displaySSID = displaySSID.substring(0, 12) + "..";
+            
+            tftInstance->setTextColor(TFT_WHITE, isSaved ? 0x18C3 : TFT_DARKGREY);
+            tftInstance->drawString(displaySSID, 18, yPos + 6, 2);
+
+            // Signal bars
+            int bars = 1;
+            if (rssi >= -55) bars = 4;
+            else if (rssi >= -65) bars = 3;
+            else if (rssi >= -75) bars = 2;
+
+            int sx = 145, sy = yPos + 22;
+            for (int b = 1; b <= 4; b++) {
+                uint16_t bColor = (b <= bars) ? TFT_GREEN : 0x4208;
+                tftInstance->fillRect(sx + (b - 1) * 4, sy - (b * 2), 3, b * 2, bColor);
+            }
+
+            // Lock icon or Open text
+            if (isSaved) {
+                tftInstance->setTextColor(TFT_CYAN, 0x18C3);
+                tftInstance->drawString("SAVED", 170, yPos + 6, 2);
+            } else if (WiFi.encryptionType(i) == WIFI_AUTH_OPEN) {
                 tftInstance->setTextColor(TFT_GREEN, TFT_DARKGREY);
-                tftInstance->drawString("OPEN", 180, yPos + 10, 2);
+                tftInstance->drawString("OPEN", 175, yPos + 6, 2);
             } else {
                 tftInstance->setTextColor(TFT_RED, TFT_DARKGREY);
-                tftInstance->drawString("SECURE", 170, yPos + 10, 2);
+                tftInstance->drawString("SECURE", 168, yPos + 6, 2);
             }
             
-            yPos += 45;
+            yPos += 46;
         }
 
         // Draw pagination or Cancel
-        tftInstance->fillRoundRect(10, 275, 100, 35, 5, TFT_RED);
+        tftInstance->fillRoundRect(10, 278, 100, 32, 5, TFT_RED);
         tftInstance->setTextColor(TFT_WHITE, TFT_RED);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("Cancel", 60, 292, 2);
+        tftInstance->drawString("Cancel", 60, 294, 2);
 
         if (totalPages > 1) {
-            tftInstance->fillRoundRect(130, 275, 100, 35, 5, TFT_BLUE);
+            tftInstance->fillRoundRect(130, 278, 100, 32, 5, TFT_BLUE);
             tftInstance->setTextColor(TFT_WHITE, TFT_BLUE);
-            tftInstance->drawString("Next Page", 180, 292, 2);
+            tftInstance->drawString("Next Page", 180, 294, 2);
         }
 
-        // Touch handling loop for this screen
+        // Touch handling loop
         uint16_t tx = 0, ty = 0;
         bool touched = false;
         while (!touched) {
-            if (tftInstance->getTouch(&tx, &ty)) {
-                // Debounce
-                while (tftInstance->getTouch(&tx, &ty)) { delay(10); }
+            if (TouchDriver::getTouch(&tx, &ty)) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); }
                 touched = true;
             }
             delay(50);
+            esp_task_wdt_reset();
         }
 
         // Check if Cancel tapped
-        if (ty >= 275 && ty <= 310 && tx >= 10 && tx <= 110) {
-            // Revert WiFi ON request
-            FileSystem::writeTextFile("/local/nowifi.txt", "1");
+        if (ty >= 278 && ty <= 312 && tx >= 10 && tx <= 110) {
             drawWiFi();
             return;
         }
 
         // Check if Next Page tapped
-        if (totalPages > 1 && ty >= 275 && ty <= 310 && tx >= 130 && tx <= 230) {
+        if (totalPages > 1 && ty >= 278 && ty <= 312 && tx >= 130 && tx <= 230) {
             currentPage++;
             if (currentPage >= totalPages) currentPage = 0;
             continue; // redraw
@@ -978,91 +1396,53 @@ void SettingsUI::scanAndConnectWiFi() {
 
         // Check if a network was tapped
         int tappedIndex = -1;
-        int checkY = 50;
+        int checkY = 46;
         for (int i = startIdx; i < endIdx; i++) {
-            if (ty >= checkY && ty <= checkY + 40 && tx >= 10 && tx <= 230) {
+            if (ty >= checkY && ty <= checkY + 42 && tx >= 10 && tx <= 230) {
                 tappedIndex = i;
                 break;
             }
-            checkY += 45;
+            checkY += 46;
         }
 
         if (tappedIndex != -1) {
             String selectedSSID = WiFi.SSID(tappedIndex);
             selectedSSID.trim();
             String password = "";
-            bool connected = false;
 
-            while (!connected) {
-                if (WiFi.encryptionType(tappedIndex) != WIFI_AUTH_OPEN) {
-                    // Ask for password
-                    String promptMsg = "Password for " + selectedSSID;
-                    password = MyKeyboard::getString("", promptMsg, 64);
-                    password.trim();
-                    if (password.length() == 0) {
-                        // Canceled typing password
-                        break; 
-                    }
-                }
-
-                tftInstance->fillScreen(TFT_BLACK);
-                tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-                tftInstance->setTextDatum(MC_DATUM);
-                tftInstance->drawString("Testing Connection...", 120, 160, 2);
-
-                WiFi.disconnect(); // Reset state
-                delay(100);
-                WiFi.mode(WIFI_STA);
-                
-                if (password.length() > 0) {
-                    WiFi.begin(selectedSSID.c_str(), password.c_str());
-                } else {
-                    WiFi.begin(selectedSSID.c_str());
-                }
-                
-                int attempts = 0;
-                while (WiFi.status() != WL_CONNECTED && attempts < 30) { // Wait up to 15 seconds
-                    delay(500);
-                    attempts++;
-                }
-
-                if (WiFi.status() == WL_CONNECTED) {
-                    connected = true;
-                } else {
-                    if (WiFi.encryptionType(tappedIndex) == WIFI_AUTH_OPEN) {
-                        tftInstance->fillScreen(TFT_BLACK);
-                        tftInstance->setTextColor(TFT_RED, TFT_BLACK);
-                        tftInstance->drawString("Failed to Connect!", 120, 160, 2);
-                        delay(2000);
-                        break;
-                    } else {
-                        tftInstance->fillScreen(TFT_BLACK);
-                        tftInstance->setTextColor(TFT_RED, TFT_BLACK);
-                        tftInstance->drawString("Wrong Password!", 120, 140, 2);
-                        tftInstance->drawString("Please try again.", 120, 160, 2);
-                        delay(2000);
-                        // Loop continues and asks for password again
-                    }
+            // Check if already in saved networks
+            for (const auto& s : savedNets) {
+                if (s.ssid.equalsIgnoreCase(selectedSSID)) {
+                    password = s.password;
+                    break;
                 }
             }
 
-            if (!connected) {
-                continue; // Go back to scanning list
-            }
-
-            // Save and Reboot
-            if (FileSystem::exists("/sd/")) {
-                FileSystem::writeTextFile("/sd/wifi.txt", (selectedSSID + "\n" + password).c_str());
-            } else {
-                FileSystem::writeTextFile("/local/wifi.txt", (selectedSSID + "\n" + password).c_str());
+            if (password.length() == 0 && WiFi.encryptionType(tappedIndex) != WIFI_AUTH_OPEN) {
+                // Ask for password
+                String promptMsg = "Password for " + selectedSSID;
+                password = MyKeyboard::getString("", promptMsg, 64);
+                password.trim();
+                if (password.length() == 0) {
+                    continue; // Canceled typing password
+                }
             }
 
             tftInstance->fillScreen(TFT_BLACK);
             tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Connected! Rebooting...", 120, 160, 2);
-            delay(1000);
-            ESP.restart();
+            tftInstance->drawString("Connecting to", 120, 140, 2);
+            tftInstance->drawString(selectedSSID + "...", 120, 165, 2);
+
+            bool success = WiFiManager::connectTo(selectedSSID, password, 10000);
+
+            tftInstance->fillScreen(TFT_BLACK);
+            tftInstance->setTextColor(success ? TFT_GREEN : TFT_RED, TFT_BLACK);
+            tftInstance->drawString(success ? "Connected Successfully!" : "Connection Failed!", 120, 160, 2);
+            delay(1200);
+
+            drawWiFi();
+            return;
         }
     }
 }
@@ -1101,50 +1481,120 @@ static bool isVerGreater(const String& newVer, const String& oldVer) {
 }
 
 bool SettingsUI::checkUpdateSilent() {
-    updaterHasUpdate = false;
-    updaterFetchFailed = false;
-    WiFiClientSecure client;
-    client.setInsecure();
-    HTTPClient http;
-    http.setTimeout(20000); // 20 seconds timeout
-    if (http.begin(client, "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/esp32/update.json")) {
-        int code = http.GET();
-        if (code == HTTP_CODE_OK) {
-            String payload = http.getString();
-            updaterVersion = FileSystem::parseJsonValue(payload, "version");
-            updaterApi = FileSystem::parseJsonValue(payload, "api_version");
-            updaterChangelog = FileSystem::parseJsonValue(payload, "changelog");
-            updaterGuide = FileSystem::parseJsonValue(payload, "guide");
-            
-            updaterChangelog.replace("\\n", "\n");
-            updaterGuide.replace("\\n", "\n");
-            
-            bool major = FileSystem::parseJsonValue(payload, "major_update") == "true";
-            bool minor = FileSystem::parseJsonValue(payload, "minor_update") == "true";
-            bool security = FileSystem::parseJsonValue(payload, "security_update") == "true";
-            
-            if (major) updaterType = "Major System Update Available!";
-            else if (minor) updaterType = "Minor Update Available!";
-            else if (security) updaterType = "Security Update Available!";
-            else updaterType = "Update Available!";
-            
+    return OTAManager::checkUpdate(false);
+}
 
-            
-            if (isVerGreater(updaterVersion, KRYONOS_VERSION)) {
-                updaterHasUpdate = true;
-            }
-        } else {
-            updaterFetchFailed = true;
-        }
-        http.end();
-    } else {
-        updaterFetchFailed = true;
+void SettingsUI::drawOTAProgress(int percent, size_t currentBytes, size_t totalBytes, float speedKBs, const String& status) {
+    if (!tftInstance) return;
+
+    tftInstance->fillScreen(TFT_BLACK);
+    tftInstance->drawRoundRect(4, 4, 232, 312, 6, TFT_CYAN);
+
+    tftInstance->setTextDatum(TC_DATUM);
+    tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
+    tftInstance->drawString("KRYONOS FIRMWARE OTA", 120, 16, 2);
+
+    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    tftInstance->drawString("Downloading & Flashing...", 120, 42, 2);
+
+    // Main Percentage
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+    tftInstance->drawString(String(percent) + "%", 120, 100, 6);
+
+    // Progress Bar Outline
+    int barX = 18;
+    int barY = 145;
+    int barW = 204;
+    int barH = 20;
+    tftInstance->drawRoundRect(barX, barY, barW, barH, 4, TFT_WHITE);
+    tftInstance->fillRect(barX + 2, barY + 2, barW - 4, barH - 4, TFT_BLACK);
+
+    // Filled bar
+    int fillW = (percent * (barW - 4)) / 100;
+    if (fillW > 0) {
+        uint16_t barColor = (percent < 50) ? TFT_CYAN : TFT_GREEN;
+        tftInstance->fillRect(barX + 2, barY + 2, fillW, barH - 4, barColor);
     }
-    return updaterHasUpdate;
+
+    // Byte Counter
+    tftInstance->setTextDatum(TC_DATUM);
+    tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
+    float currMb = currentBytes / (1024.0f * 1024.0f);
+    float totMb = totalBytes / (1024.0f * 1024.0f);
+    char buf[64];
+    sprintf(buf, "%.2f MB / %.2f MB (%.1f kB/s)", currMb, totMb, speedKBs);
+    tftInstance->drawString(buf, 120, 178, 2);
+
+    // Status Message
+    tftInstance->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
+    tftInstance->drawString(status.c_str(), 120, 204, 2);
+
+    // Critical Safety Notice
+    tftInstance->setTextColor(TFT_RED, TFT_BLACK);
+    tftInstance->drawString("DO NOT POWER OFF DEVICE", 120, 245, 2);
+    tftInstance->setTextColor(TFT_DARKGREY, TFT_BLACK);
+    tftInstance->drawString("Anti-rollback protection active", 120, 265, 1);
+}
+
+void SettingsUI::drawOTAError(const String& errorMsg) {
+    otaErrorShown = true;
+    if (!tftInstance) return;
+
+    tftInstance->fillScreen(TFT_BLACK);
+    tftInstance->drawRoundRect(4, 4, 232, 312, 6, TFT_RED);
+
+    // Warning Header
+    tftInstance->fillRoundRect(10, 10, 220, 36, 5, TFT_RED);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->setTextColor(TFT_WHITE, TFT_RED);
+    tftInstance->drawString("UPDATE FAILED", 120, 28, 4);
+
+    // Error Details Card
+    tftInstance->fillRoundRect(10, 56, 220, 158, 5, 0x1800); // Deep maroon
+    tftInstance->drawRoundRect(10, 56, 220, 158, 5, TFT_RED);
+
+    tftInstance->setTextDatum(TC_DATUM);
+    tftInstance->setTextColor(TFT_YELLOW, 0x1800);
+    tftInstance->drawString("Error Reason:", 120, 68, 2);
+
+    tftInstance->setTextColor(TFT_WHITE, 0x1800);
+    // Wrap error string across lines
+    int y = 92;
+    int start = 0;
+    while (start < (int)errorMsg.length() && y < 170) {
+        int lEnd = start + 26;
+        if (lEnd >= (int)errorMsg.length()) lEnd = errorMsg.length();
+        else {
+            int space = errorMsg.lastIndexOf(' ', lEnd);
+            if (space > start) lEnd = space;
+        }
+        tftInstance->drawString(errorMsg.substring(start, lEnd).c_str(), 120, y, 2);
+        y += 18;
+        start = lEnd;
+        if (start < (int)errorMsg.length() && errorMsg[start] == ' ') start++;
+    }
+
+    tftInstance->setTextColor(TFT_GREEN, 0x1800);
+    tftInstance->drawString("Previous OS safe & intact.", 120, 185, 2);
+
+    // Button 1: Retry (y: 224 - 264)
+    tftInstance->fillRoundRect(15, 224, 210, 38, 5, TFT_YELLOW);
+    tftInstance->setTextColor(TFT_BLACK, TFT_YELLOW);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString("RETRY UPDATE", 120, 243, 2);
+
+    // Button 2: Back / Exit (y: 272 - 310)
+    tftInstance->drawRoundRect(15, 272, 210, 36, 5, TFT_WHITE);
+    tftInstance->fillRect(16, 273, 208, 34, TFT_BLACK);
+    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString("BACK TO SETTINGS", 120, 290, 2);
 }
 
 void SettingsUI::drawUpdater(bool isBootCheck) {
     updaterIsFromBoot = isBootCheck;
+    otaErrorShown = false;
     tftInstance->fillScreen(TFT_BLACK);
     tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
     
@@ -1156,10 +1606,10 @@ void SettingsUI::drawUpdater(bool isBootCheck) {
         tftInstance->drawString("Please turn on WiFi", 120, 160, 2);
         tftInstance->drawString("first in Settings.", 120, 180, 2);
         
-        tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+        tftInstance->drawRoundRect(5, 280, 230, 32, 5, TFT_WHITE);
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString(isBootCheck ? "CLOSE" : "BACK", 120, 300, 2);
+        tftInstance->drawString(isBootCheck ? "CLOSE" : "BACK", 120, 296, 2);
         return;
     }
     
@@ -1167,102 +1617,167 @@ void SettingsUI::drawUpdater(bool isBootCheck) {
     tftInstance->setTextDatum(MC_DATUM);
     tftInstance->drawString("Checking for updates...", 120, 160, 2);
     
-    checkUpdateSilent();
+    bool hasUpdate = OTAManager::checkUpdate(isBootCheck);
+    const OTAUpdateInfo& info = OTAManager::getUpdateInfo();
     
-    if (isBootCheck && (!updaterHasUpdate || updaterFetchFailed)) {
+    if (isBootCheck && (!hasUpdate || info.fetchFailed)) {
         extern int currentState;
         currentState = 0; // STATE_LAUNCHER
         return;
     }
-    
+
     tftInstance->fillScreen(TFT_BLACK);
     tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
     
-    if (updaterFetchFailed) {
+    if (info.fetchFailed) {
         tftInstance->setTextColor(TFT_RED, TFT_BLACK);
         tftInstance->setTextDatum(MC_DATUM);
         tftInstance->drawString("Failed to check", 120, 140, 2);
         tftInstance->drawString("for updates!", 120, 160, 2);
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
         tftInstance->drawString("Check your connection", 120, 190, 2);
-    } else if (!updaterHasUpdate) {
+    } else if (!hasUpdate) {
         tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("System is up to date!", 120, 160, 2);
+        tftInstance->drawString("System is up to date!", 120, 145, 2);
+        tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
+        tftInstance->drawString(String("Current: v") + KRYONOS_VERSION, 120, 170, 2);
     } else {
         tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
         tftInstance->setTextDatum(TC_DATUM);
-        tftInstance->drawString(updaterType.c_str(), 120, 15, 2);
+        tftInstance->drawString(info.updateType.c_str(), 120, 10, 2);
         
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString(String(KRYONOS_VERSION) + " -> " + updaterVersion, 120, 35, 2);
+        tftInstance->drawString(String("v") + KRYONOS_VERSION + " -> v" + info.version, 120, 28, 2);
         
-        int y = 60;
+        int y = 48;
         tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
         tftInstance->setTextDatum(TL_DATUM);
-        tftInstance->drawString("What's New:", 15, y, 2); y += 16;
+        tftInstance->drawString("What's New:", 15, y, 2); y += 15;
         
         tftInstance->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
         int start = 0;
-        while (start < (int)updaterChangelog.length() && y < 180) {
-            int nl = updaterChangelog.indexOf('\n', start);
+        int maxChangelogY = (info.guide.length() > 0) ? 140 : 185;
+        while (start < (int)info.changelog.length() && y < maxChangelogY) {
+            int nl = info.changelog.indexOf('\n', start);
             String line;
-            if (nl == -1) { line = updaterChangelog.substring(start); start = updaterChangelog.length(); }
-            else { line = updaterChangelog.substring(start, nl); start = nl + 1; }
+            if (nl == -1) { line = info.changelog.substring(start); start = info.changelog.length(); }
+            else { line = info.changelog.substring(start, nl); start = nl + 1; }
             
             int lStart = 0;
-            while(lStart < (int)line.length() && y < 180) {
+            while(lStart < (int)line.length() && y < maxChangelogY) {
                 int lEnd = lStart + 30;
                 if(lEnd >= (int)line.length()) lEnd = line.length();
                 else { int space = line.lastIndexOf(' ', lEnd); if(space > lStart) lEnd = space; }
                 tftInstance->drawString(line.substring(lStart, lEnd).c_str(), 15, y, 2);
-                y += 16;
+                y += 14;
                 lStart = lEnd;
                 if(lStart < (int)line.length() && line[lStart]==' ') lStart++;
             }
         }
         
-        y += 5;
-        tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
-        tftInstance->drawString("How to Install:", 15, y, 2); y += 16;
-        
-        tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
-        start = 0;
-        while (start < (int)updaterGuide.length() && y < 275) {
-            int nl = updaterGuide.indexOf('\n', start);
-            String line;
-            if (nl == -1) { line = updaterGuide.substring(start); start = updaterGuide.length(); }
-            else { line = updaterGuide.substring(start, nl); start = nl + 1; }
-            
-            int lStart = 0;
-            while(lStart < (int)line.length() && y < 275) {
-                int lEnd = lStart + 30;
-                if(lEnd >= (int)line.length()) lEnd = line.length();
-                else { int space = line.lastIndexOf(' ', lEnd); if(space > lStart) lEnd = space; }
-                tftInstance->drawString(line.substring(lStart, lEnd).c_str(), 15, y, 2);
-                y += 16;
-                lStart = lEnd;
-                if(lStart < (int)line.length() && line[lStart]==' ') lStart++;
+        // Render Guide if present and non-empty
+        if (info.guide.length() > 0) {
+            y += 4;
+            tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
+            tftInstance->drawString("How to Install:", 15, y, 2); y += 14;
+            tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
+            int gStart = 0;
+            while (gStart < (int)info.guide.length() && y < 205) {
+                int nl = info.guide.indexOf('\n', gStart);
+                String line;
+                if (nl == -1) { line = info.guide.substring(gStart); gStart = info.guide.length(); }
+                else { line = info.guide.substring(gStart, nl); gStart = nl + 1; }
+                
+                int lStart = 0;
+                while(lStart < (int)line.length() && y < 205) {
+                    int lEnd = lStart + 30;
+                    if(lEnd >= (int)line.length()) lEnd = line.length();
+                    else { int space = line.lastIndexOf(' ', lEnd); if(space > lStart) lEnd = space; }
+                    tftInstance->drawString(line.substring(lStart, lEnd).c_str(), 15, y, 2);
+                    y += 14;
+                    lStart = lEnd;
+                    if(lStart < (int)line.length() && line[lStart]==' ') lStart++;
+                }
             }
+        }
+
+        if (info.firmwareSize > 0) {
+            y += 4;
+            tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
+            float szMb = info.firmwareSize / (1024.0f * 1024.0f);
+            char szBuf[32];
+            sprintf(szBuf, "Firmware Size: %.2f MB", szMb);
+            tftInstance->drawString(szBuf, 15, y, 2);
+        }
+
+        // INSTALL UPDATE Button (only if board supports OTA)
+        if (info.supportsOta) {
+            tftInstance->fillRoundRect(10, 234, 220, 36, 5, TFT_GREEN);
+            tftInstance->drawRoundRect(10, 234, 220, 36, 5, TFT_WHITE);
+            tftInstance->setTextColor(TFT_BLACK, TFT_GREEN);
+            tftInstance->setTextDatum(MC_DATUM);
+            tftInstance->drawString("INSTALL UPDATE", 120, 252, 2);
         }
     }
     
-    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    // Bottom Dismiss Button
+    tftInstance->drawRoundRect(10, 278, 220, 32, 5, TFT_WHITE);
+    tftInstance->fillRect(11, 279, 218, 30, TFT_BLACK);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(isBootCheck ? "CLOSE" : "BACK", 120, 300, 2);
+    tftInstance->drawString(isBootCheck ? "CLOSE" : "BACK", 120, 294, 2);
 }
 
 void SettingsUI::handleUpdaterTouch(uint16_t x, uint16_t y) {
-    if (y >= 285 && x > 60 && x < 180) {
-        extern int currentState;
+    extern int currentState;
+
+    if (otaErrorShown) {
+        // Retry button (y: 224 - 264)
+        if (y >= 224 && y <= 264 && x >= 15 && x <= 225) {
+            otaErrorShown = false;
+            const OTAUpdateInfo& info = OTAManager::getUpdateInfo();
+            drawOTAProgress(0, 0, info.firmwareSize, 0, "Reconnecting...");
+            bool success = OTAManager::startFlashUpdate([](const OTAProgress& p) {
+                SettingsUI::drawOTAProgress(p.percent, p.downloadedBytes, p.totalBytes, p.speedKBs, p.statusMessage);
+            });
+            if (!success) {
+                const OTAProgress& prog = OTAManager::getProgress();
+                drawOTAError(prog.errorMessage);
+            }
+            return;
+        }
+        // Back to settings button (y: 272 - 310)
+        if (y >= 270 && y <= 312 && x >= 15 && x <= 225) {
+            otaErrorShown = false;
+            currentState = updaterIsFromBoot ? 0 : 1;
+            return;
+        }
+        return;
+    }
+
+    const OTAUpdateInfo& info = OTAManager::getUpdateInfo();
+
+    // 1. "INSTALL UPDATE" Button (only if supports_ota is true)
+    if (info.hasUpdate && info.supportsOta && y >= 230 && y <= 272 && x >= 10 && x <= 230) {
+        drawOTAProgress(0, 0, info.firmwareSize, 0, "Initializing Flash Stream...");
+        bool success = OTAManager::startFlashUpdate([](const OTAProgress& p) {
+            SettingsUI::drawOTAProgress(p.percent, p.downloadedBytes, p.totalBytes, p.speedKBs, p.statusMessage);
+        });
+        if (!success) {
+            const OTAProgress& prog = OTAManager::getProgress();
+            drawOTAError(prog.errorMessage);
+        }
+        return;
+    }
+
+    // 2. "BACK / CLOSE" Button
+    if (y >= 274 && y <= 314 && x >= 10 && x <= 230) {
         if (updaterIsFromBoot) {
             currentState = 0; // STATE_LAUNCHER
-            extern TFT_eSPI tft;
-            // The main loop will call LauncherUI::draw() when state changes
-            // but we might need to force a redraw. State machine usually handles it.
         } else {
             currentState = 1; // STATE_SETTINGS
         }
     }
 }
+

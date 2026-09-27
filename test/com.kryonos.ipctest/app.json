@@ -1,0 +1,13 @@
+{
+  "name": "IPC & Intent Explorer",
+  "packageName": "com.kryonos.ipctest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Tests inter-app communication, contextual app launching, file extension intent dispatching, and launch arguments.",
+  "type": "Utility",
+  "category": "System",
+  "api": 2,
+  "main": "main.js",
+  "fileAssociations": [".txt", ".log", ".json"],
+  "allowCompanionLaunch": true
+}

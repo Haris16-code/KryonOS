@@ -1,0 +1,11 @@
+{
+  "name": "Web Browser",
+  "packageName": "com.kryonos.browser",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Ultra-fast Edge-Transcoded Web Browser and Reader for KryonOS.",
+  "type": "Application",
+  "category": "Internet",
+  "api": 2,
+  "main": "main.js"
+}

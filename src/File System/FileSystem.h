@@ -16,6 +16,7 @@ struct FileEntry {
 class FileSystem {
 public:
     static bool init();
+    static File openFile(const char* path, const char* mode = "r");
     static String readTextFile(const char* path);
     static bool writeTextFile(const char* path, const char* content);
     static bool exists(const char* path);
@@ -51,12 +52,10 @@ public:
     static String getFileMD5(const char* path);
     
     // Mounting/Formatting
+    static bool isSDMounted();
     static bool mountSD();
     static void unmountSD();
     static bool formatSD();
-    
-private:
-    static const int SD_CS_PIN = 15;
 };
 
 #endif // FILE_SYSTEM_H

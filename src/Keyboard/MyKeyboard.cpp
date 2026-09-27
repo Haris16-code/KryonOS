@@ -1,4 +1,5 @@
 #include "MyKeyboard.h"
+#include "../Settings/TouchDriver.h"
 
 TFT_eSPI *MyKeyboard::tftInstance = nullptr;
 
@@ -27,7 +28,7 @@ String MyKeyboard::getString(String initialText, String promptMsg, int maxLen) {
 
     while (!done) {
         uint16_t x, y;
-        if (tftInstance->getTouch(&x, &y)) {
+        if (TouchDriver::getTouch(&x, &y)) {
             handleTouch(x, y, currentText, caps, done);
             if (!done) {
                 drawKeyboard(currentText, promptMsg, caps, -1, -1);
@@ -36,6 +37,13 @@ String MyKeyboard::getString(String initialText, String promptMsg, int maxLen) {
         }
         delay(10);
     }
+    
+    // Drain touch buffer & wait for physical touch release so touches do not bleed through
+    uint16_t rx, ry;
+    while (TouchDriver::getTouch(&rx, &ry)) {
+        delay(20);
+    }
+    delay(80);
     
     return currentText;
 }

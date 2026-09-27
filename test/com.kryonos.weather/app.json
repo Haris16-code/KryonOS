@@ -1,0 +1,11 @@
+{
+  "name": "Kryon Weather",
+  "packageName": "com.kryonos.weather",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Real-time global weather forecasts, hourly conditions, and 4-day outlook powered by Open-Meteo API.",
+  "type": "Utility",
+  "category": "Weather",
+  "api": 2,
+  "main": "main.js"
+}

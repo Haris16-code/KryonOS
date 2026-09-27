@@ -1,0 +1,12 @@
+{
+  "name": "Notification Studio",
+  "packageName": "com.kryonos.notifytest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Interactive testing studio for OS-level floating toast notifications with easing animations and audio chimes.",
+  "type": "Utility",
+  "category": "System",
+  "api": 2,
+  "main": "main.js",
+  "allowCompanionLaunch": true
+}

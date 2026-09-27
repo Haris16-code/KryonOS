@@ -97,9 +97,18 @@ bool AppStoreUI::downloadFile(const String& url, const String& destPath, const S
             relPath = destPath.substring(6);
         }
         
-        File file = targetFS->open(relPath, "w");
+        // Ensure parent directory exists before writing
+        int lastSlash = relPath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            String parentDir = relPath.substring(0, lastSlash);
+            if (!targetFS->exists(parentDir.c_str())) {
+                targetFS->mkdir(parentDir.c_str());
+            }
+        }
+        
+        File file = targetFS->open(relPath, FILE_WRITE);
         if (!file) {
-            dialogMessage = "Error: FS Write Failed!";
+            dialogMessage = "Error: FS Write " + String(relPath);
             http.end();
             return false;
         }
@@ -267,6 +276,7 @@ bool AppStoreUI::checkUpdates() {
     }
     
     for (int i=0; i<2; i++) {
+        if (i == 0 && !FileSystem::isSDMounted()) continue;
         fs::FS* targetFS = (i == 0) ? (fs::FS*)&SD : (fs::FS*)&LittleFS;
         if (!targetFS->exists("/apps")) continue;
         

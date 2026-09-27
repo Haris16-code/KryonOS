@@ -325,9 +325,18 @@ bool HelpCenterUI::downloadFile(const String& url, const String& destPath, const
         int totalLen = http.getSize();
         int downloaded = 0;
         
-        File file = LittleFS.open(destPath, "w");
+        // Ensure parent directory exists before writing
+        int lastSlash = destPath.lastIndexOf('/');
+        if (lastSlash > 0) {
+            String parentDir = destPath.substring(0, lastSlash);
+            if (!LittleFS.exists(parentDir.c_str())) {
+                LittleFS.mkdir(parentDir.c_str());
+            }
+        }
+        
+        File file = LittleFS.open(destPath, FILE_WRITE);
         if (!file) {
-            dialogMessage = "FS Write Failed!";
+            dialogMessage = "FS Write: " + destPath;
             http.end();
             return false;
         }

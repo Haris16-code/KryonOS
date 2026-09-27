@@ -1,0 +1,12 @@
+{
+  "name": "Doom 3D",
+  "packageName": "com.kryonos.doom3d",
+  "version": "1.0.0",
+  "metaUrl": "https://raw.githubusercontent.com/Haris16-code/KryonOS-AppStore/main/apps/com.kryonos.doom3d/app.json",
+  "author": "KryonOS Team",
+  "description": "Hardware-accelerated 3D Doom raycasting shooter powered by FastMath engine.",
+  "type": "Game",
+  "category": "Action 3D",
+  "api": 1,
+  "changelog": "Initial Doom 3D release powered by FastMath hardware acceleration."
+}

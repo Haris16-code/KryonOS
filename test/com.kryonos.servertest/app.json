@@ -1,0 +1,11 @@
+{
+  "name": "Web Server Tester",
+  "packageName": "com.kryonos.servertest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Full-featured web server test app with REST endpoints, live client logs, dynamic API controls, and static webpage hosting.",
+  "type": "Utility",
+  "category": "Network",
+  "api": 2,
+  "main": "main.js"
+}
