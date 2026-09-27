@@ -1,34 +1,29 @@
 {
-  "version": "3.0.0",
-  "api_version": 2,
+  "release": {
+    "version": "3.0.0",
+    "api_version": 2,
+    "type": "major",
+    "changelog": "- KryonCloud Services & JS AI Engine\n- High-Speed SD Multi-Bus Mount\n- Anti-rollback wireless OTA"
+  },
   "boards": {
     "esp32-s3-devkitc-1-n16r8": {
-      "version": "3.0.0",
-      "api_version": 2,
-      "auto_update": true,
-      "major_update": true,
-      "minor_update": false,
-      "security_update": false,
+      "version": "2.0.1",
+      "type": "patch",
+      "changelog": "- Fixed Octal PSRAM timing glitch on S3 DevKitC-1\n- Optimized USB-CDC serial throughput",
+      "supports_ota": true,
       "firmware_url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/esp32s3/firmware.bin",
-      "firmware_size": 1669168,
-      "firmware_md5": "b3e04cfda8853b0e5015e7145719e8cf",
-      "changelog": "- Added KryonCloud Services & JS AI Engine\n- High-Speed SD Card Multi-Bus Mount\n- Full Anti-Rollback OTA Engine",
-      "guide": "1. Automatic OTA installation supported.\n2. Tap 'Install OTA' or enable Auto-Update.",
-      "min_supported_version": "1.0.0"
+      "firmware_size": 1669420,
+      "firmware_md5": "d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1"
     },
     "esp32doit-devkit-v1": {
-      "version": "1.0.0",
-      "api_version": 1,
-      "auto_update": false,
-      "major_update": false,
-      "minor_update": false,
-      "security_update": false,
-      "firmware_url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/esp32/firmware.bin",
-      "firmware_size": 1245184,
-      "firmware_md5": "",
-      "changelog": "- Legacy ESP32 build",
-      "guide": "1. Connect ESP32 via USB.\n2. Flash new firmware.bin via WebFlasher."
+      "supports_ota": false,
+      "guide": "Flash via Web Flasher: kryonos.harislab.tech/flasher"
+    },
+    "esp32-cyd-28": {
+      "supports_ota": true,
+      "firmware_url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/cyd28/firmware.bin",
+      "firmware_size": 1450200,
+      "firmware_md5": "e5f6a1b2c3d4567890abcdef12345678"
     }
-  },
-  "global_notice": "KryonOS v2.0 is now available with KryonCloud & AI Engine."
+  }
 }
