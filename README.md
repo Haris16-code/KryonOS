@@ -289,6 +289,10 @@ pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
 <p>&rarr; <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">Support KryonOS Development</a></p>
 
 <hr>
+<h2>Stay Updated: Firmware Releases &amp; Development News</h2>
+<p>Subscribe to official KryonOS development updates to receive email notifications about new releases, newly supported hardware boards, architecture deep dives, and upcoming features:</p>
+<p>&rarr; <a href="https://kryonos.harislab.tech/subscribe">Subscribe to KryonOS Updates</a></p>
+<hr>
 
 <h2>Star the Project</h2>
 <p>If you like KryonOS or find this project useful, please consider giving our repository a <strong>Star on GitHub</strong>! Every star boosts project visibility, helps grow the embedded JavaScript community, and motivates ongoing development.</p>
