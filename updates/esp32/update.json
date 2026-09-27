@@ -1,9 +1,9 @@
 {
-  "version": "1.0.0",
-  "api_version": 1,
+  "version": "2.0.0",
+  "api_version": 2,
   "major_update": true,
   "minor_update": false,
   "security_update": false,
-  "changelog": "- Add Major Update\n- New Features Added",
-  "guide": "1. Connect ESP32 via USB.\n2. Flash new firmware.bin via WebFlasher."
+  "changelog": "- Multi-board support: ESP32-S3, Cardputer, T-HMI & CYD.\n- KryonCloud services, on-device AI streaming & mesh messaging.\n- Kryon3D hardware-accelerated graphics & FastMath engine.\n- Embedded Express-like HTTP server & WebSocket client.\n- Automatic wireless OTA updates (8MB+ boards).\n- Extensive new JavaScript hardware APIs (PWM, I2C, Crypto).",
+  "guide": "1. Visit the GitHub repository: https://github.com/Haris16-code/KryonOS\n2. Navigate to the latest release page.\n3. Download the firmware binary matching your specific board.\n4. Connect your device via USB.\n5. Flash the binary following the instructions provided in the release notes using any ESP32 flasher (such as esptool or ESP Flash Download Tool)."
 }
