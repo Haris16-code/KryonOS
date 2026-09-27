@@ -311,6 +311,10 @@ pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
     <td><a href="Documentation/Hardware_Architecture.md"><strong>Hardware Architecture</strong></a></td>
     <td>Hardware configuration and system architecture.</td>
   </tr>
+    <tr>
+    <td><a href="https://github.com/Haris16-code/KryonOS/wiki/How-To-Setup-KryonCloud"><strong>Setup Your KryonCloud</strong></a></td>
+    <td>Connect your device to access KryonCloud services</td>
+  </tr>
   <tr>
     <td><a href="Documentation/JS_API_Guide.md"><strong>JavaScript API Guide</strong></a></td>
     <td>APIs available to JavaScript applications.</td>
