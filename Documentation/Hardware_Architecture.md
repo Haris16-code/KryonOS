@@ -10,10 +10,10 @@ All board-specific pinouts, bus initializations, display controllers, and input 
 
 | Board Target | Environment Name | MCU | Flash / PSRAM | Display | Input Device | Storage |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **ESP32-S3 DevKitC-1** *(Default)* | `esp32-s3-devkitc-1-n16r8` | ESP32-S3 | 16MB / 8MB OPI | ILI9341 240x320 SPI | XPT2046 Touch | SPI SD Card |
-| **M5Stack Cardputer v1.1** | `m5stack-cardputer` | ESP32-S3 (Stamp-S3) | 8MB / None | ST7789V2 240x135 SPI | 56-Key Matrix Keyboard | SPI SD Card |
-| **LilyGO T-HMI** | `lilygo-t-hmi` | ESP32-S3 | 16MB / 8MB OPI | ST7789 240x320 8-bit Parallel | XPT2046 Touch | SD_MMC (1-bit) |
-| **ESP32-CYD-28** *(Cheap Yellow Display)* | `esp32-cyd-28` | ESP32 | 4MB / None | ILI9341 240x320 SPI | XPT2046 Touch | SPI SD Card |
+| **ESP32-S3 DevKitC-1 N16R8** *(Default)* | `esp32-s3-devkitc-1-n16r8` | ESP32-S3 | 16MB / 8MB OPI | ILI9341 240x320 SPI | XPT2046 Touch | SPI SD Card |
+| **M5Stack Cardputer v1.1 (Experimental)** | `m5stack-cardputer` | ESP32-S3 (Stamp-S3) | 8MB / None | ST7789V2 240x135 SPI | 56-Key Matrix Keyboard | SPI SD Card |
+| **LilyGO T-HMI (Experimental)** | `lilygo-t-hmi` | ESP32-S3 | 16MB / 8MB OPI | ST7789 240x320 8-bit Parallel | XPT2046 Touch | SD_MMC (1-bit) |
+| **ESP32-CYD-28 (Experimental)** *(Cheap Yellow Display)* | `esp32-cyd-28` | ESP32 | 4MB / None | ILI9341 240x320 SPI | XPT2046 Touch | SPI SD Card |
 | **ESP32 DevKit v1** | `esp32doit-devkit-v1` | ESP32 | 4MB / None | ILI9341 240x320 SPI | XPT2046 Touch | SPI SD Card |
 
 ---
