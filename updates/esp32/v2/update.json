@@ -5,7 +5,7 @@
     "esp32-s3-devkitc-1-n16r8": {
       "version": "3.0.0",
       "api_version": 2,
-      "auto_update": false,
+      "auto_update": true,
       "major_update": true,
       "minor_update": false,
       "security_update": false,
