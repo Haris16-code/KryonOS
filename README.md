@@ -1,5 +1,39 @@
+<div align="center">
+
 <h1>KryonOS</h1>
 
+<p>
+  <strong>A GUI JavaScript OS for ESP32</strong>
+</p>
+
+<p>
+  An open-source GUI operating system and JavaScript app platform for ESP32 and ESP32-S3, with graphics, hardware APIs, file management, an App Store, and cloud services.
+</p>
+
+<p>
+  <a href="https://github.com/Haris16-code/KryonOS/releases">
+    <img src="https://img.shields.io/github/v/release/Haris16-code/KryonOS?style=for-the-badge&logo=github" alt="Latest Release">
+  </a>
+  <a href="https://github.com/Haris16-code/KryonOS/stargazers">
+    <img src="https://img.shields.io/github/stars/Haris16-code/KryonOS?style=for-the-badge&logo=github" alt="GitHub Stars">
+  </a>
+  <a href="https://github.com/Haris16-code/KryonOS/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/Haris16-code/KryonOS?style=for-the-badge" alt="License">
+  </a>
+</p>
+
+<p>
+  <a href="https://github.com/Haris16-code/KryonOS/wiki">Documentation</a>
+  •
+  <a href="https://github.com/Haris16-code/KryonOS/releases">Releases</a>
+  •
+  <a href="https://github.com/Haris16-code/KryonOS/discussions">Discussions</a>
+  •
+  <a href="https://github.com/Haris16-code/KryonOS/issues">Issues</a>
+</p>
+
+</div>
+<hr>
 <p>KryonOS is an <strong>open-source</strong>, lightweight, high-performance <strong>GUI Operating System and JavaScript App Runtime</strong> designed specifically for the ESP32 and ESP32-S3 microcontrollers. It provides a complete desktop-like experience on embedded devices, featuring an integrated JS engine (Duktape) for executing standalone JavaScript applications, double-buffered graphics for smooth 2D/3D rendering, KryonCloud services, on-device AI streaming, an App Store, file management, and direct hardware API access.</p>
 
 <table border="1" cellpadding="6" cellspacing="0">
@@ -270,19 +304,78 @@ pio run -e esp32-cyd-28 -t upload        # ESP32 Cheap Yellow Display
 pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
 
 <hr>
+<h2>Documentation</h2>
 
-<h2>Documentation &amp; Community</h2>
-<ul>
-  <li><strong><a href="CHANGELOG.md">Changelog &amp; Release Notes</a></strong> - View all release notes, new APIs, breaking changes, and version history.</li>
-  <li><strong><a href="Documentation/Hardware_Architecture.md">Hardware Architecture Guide</a></strong> - Deep dive into multi-board pinouts, display drivers, and build environments.</li>
-  <li><strong><a href="Documentation/Kryon3D_Engine_Guide.md">Kryon3D Graphics Engine Guide</a></strong> - Comprehensive tutorial and API reference for 3D game and scene rendering.</li>
-  <li><strong><a href="Documentation/JS_API_Guide.md">JavaScript API Guide</a></strong> - Complete system reference for JavaScript APIs (Graphics, Hardware, Audio, AI, Networking, Cloud).</li>
-  <li><strong><a href="Documentation/App_Development_Guide.md">App Development Guide</a></strong> - Learn how to build and package interactive JS apps for the KryonOS ecosystem.</li>
-  <li><strong><a href="https://github.com/Haris16-code/KryonOS/discussions">Discussions</a></strong> - Join the community, ask questions, and share project showcases.</li>
-</ul>
+<table>
+  <tr>
+    <td><a href="Documentation/Hardware_Architecture.md"><strong>Hardware Architecture</strong></a></td>
+    <td>Hardware configuration and system architecture.</td>
+  </tr>
+  <tr>
+    <td><a href="Documentation/JS_API_Guide.md"><strong>JavaScript API Guide</strong></a></td>
+    <td>APIs available to JavaScript applications.</td>
+  </tr>
+  <tr>
+    <td><a href="Documentation/App_Development_Guide.md"><strong>App Development Guide</strong></a></td>
+    <td>Build applications for KryonOS.</td>
+  </tr>
+  <tr>
+    <td><a href="Documentation/Kryon3D_Engine_Guide.md"><strong>Kryon3D Engine Guide</strong></a></td>
+    <td>Developing with the Kryon3D graphics engine.</td>
+  </tr>
+  <tr>
+    <td><a href="CHANGELOG.md"><strong>Changelog</strong></a></td>
+    <td>Changes, additions, fixes, and breaking changes.</td>
+  </tr>
+  <tr>
+    <td><a href="https://github.com/Haris16-code/KryonOS/discussions"><strong>Discussions</strong></a></td>
+    <td>Community discussions and development topics.</td>
+  </tr>
+</table>
 
+<p align="center">
+  <a href="https://github.com/Haris16-code/KryonOS/wiki">
+    <strong>Visit the KryonOS Documentation →</strong>
+  </a>
+</p>
+
+<h2>Community</h2>
+
+<p>
+Have a question, found a bug, want to contribute, or want to discuss a new feature?
+Join the KryonOS community.
+</p>
+
+<p>
+  <a href="https://github.com/Haris16-code/KryonOS/discussions">GitHub Discussions</a>
+  •
+  <a href="https://github.com/Haris16-code/KryonOS/issues">Issues</a>
+  •
+  <a href="https://github.com/Haris16-code/KryonOS/pulls">Pull Requests</a>
+</p>
 <hr>
+<h2>Contributing</h2>
 
+<p>
+Contributions are welcome.
+Before opening a pull request, please review the project documentation and existing architecture.
+</p>
+
+<p>
+Areas where contributions are especially useful include:
+</p>
+
+<ul>
+  <li>New board support</li>
+  <li>Display and touch support</li>
+  <li>Hardware integrations</li>
+  <li>JavaScript APIs</li>
+  <li>Applications</li>
+  <li>Graphics improvements</li>
+  <li>Bug fixes</li>
+  <li>Documentation</li>
+  <li>Testing</li>
+</ul>
 <h2>Support KryonOS</h2>
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
 <p>Due to budget constraints, experimental board ports (Cardputer, T-HMI, CYD) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
