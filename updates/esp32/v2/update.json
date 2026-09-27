@@ -8,7 +8,7 @@
   "boards": {
     "esp32-s3-devkitc-1-n16r8": {
       "version": "2.0.0",
-      "type": "patch",
+      "type": "major",
       "changelog": "- Fixed Octal PSRAM timing glitch on S3 DevKitC-1\n- Optimized USB-CDC serial throughput",
       "supports_ota": true,
       "firmware_url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/esp32s3/firmware.bin",
