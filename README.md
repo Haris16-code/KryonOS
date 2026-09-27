@@ -315,13 +315,13 @@ pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
     <td><a href="https://github.com/Haris16-code/KryonOS/wiki/How-To-Setup-KryonCloud"><strong>Setup Your KryonCloud</strong></a></td>
     <td>Connect your device to access KryonCloud services</td>
   </tr>
+    <tr>
+    <td><a href="Documentation/App_Development_Guide.md"><strong>App Development Guide</strong></a></td>
+    <td>Build applications for KryonOS.</td>
+  </tr>
   <tr>
     <td><a href="Documentation/JS_API_Guide.md"><strong>JavaScript API Guide</strong></a></td>
     <td>APIs available to JavaScript applications.</td>
-  </tr>
-  <tr>
-    <td><a href="Documentation/App_Development_Guide.md"><strong>App Development Guide</strong></a></td>
-    <td>Build applications for KryonOS.</td>
   </tr>
   <tr>
     <td><a href="Documentation/Kryon3D_Engine_Guide.md"><strong>Kryon3D Engine Guide</strong></a></td>
@@ -371,14 +371,14 @@ Areas where contributions are especially useful include:
 
 <ul>
   <li>New board support</li>
-  <li>Display and touch support</li>
+  <li>Display and touch drivers</li>
   <li>Hardware integrations</li>
   <li>JavaScript APIs</li>
-  <li>Applications</li>
-  <li>Graphics improvements</li>
+  <li>JavaScript applications for KryonOS</li>
+  <li>Graphics and 3D engine improvements</li>
   <li>Bug fixes</li>
   <li>Documentation</li>
-  <li>Testing</li>
+  <li>Hardware testing and validation</li>
 </ul>
 <h2>Support KryonOS</h2>
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
