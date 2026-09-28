@@ -1,3 +1,7 @@
-These are the apps and some 3d games we will make for internal testing but you can also use it these apps use the KryonOS latest API level 2 and wil run on KryonOS v2.0.0
+### Experimental Test Applications & 3D Demos
 
-<b>Make sure to know that these apps may not be stable</b>
+This directory contains test applications and experimental 3D games built for internal testing and hardware validation[cite: 1]. You are welcome to run and explore them!
+
+These applications utilize the **KryonOS API Level 2** and require **KryonOS v2.0.0** or later[cite: 1].
+
+> **Please Note:** These apps are experimental internal test builds and may be unstable, contain bugs, or undergo breaking changes across revisions.
