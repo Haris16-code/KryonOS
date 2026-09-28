@@ -1,15 +1,18 @@
 <?php
 /**
- * KryonOS Edge-Transcoding Web Proxy Engine
- * Single-file, zero-dependency PHP proxy for ESP32-S3 Web Browser.
- * 
- * Features:
- * - SSRF Protection (Blocks internal/private subnets)
- * - Semantic Reader Engine (Destructive stripping of scripts, styles, ads)
- * - Hardware Pre-Layout (220px word-wrapping, cumulative vertical coordinate tagging)
- * - Touch-Zone Link Bounding Box Generation
- * - Memory-Capped Pagination (10-15 KB max payload per page)
- * - Local File-based Cache (< 5ms repeat response)
+ * KryonOS Web Proxy
+ *
+ * Backend proxy script required by the KryonOS Browser application.
+ *
+ * Setup & Usage:
+ * 1. Host and execute this script on a local web server (e.g., PHP built-in server or Apache).
+ * 2. Note your host IP address and construct the full proxy URL:
+ *    http://<server-ip>/proxy.php
+ * 3. Open the Browser app on your KryonOS device and enter this proxy URL in the settings.
+ *
+ * Note:
+ * This script was originally built for internal testing and validation.
+ * It may contain bugs or unhandled edge cases across complex web pages.
  */
 
 declare(strict_types=1);
