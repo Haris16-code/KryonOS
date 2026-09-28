@@ -56,20 +56,29 @@ def format_amount(val: float) -> str:
     return f"{int(val)}" if val.is_integer() else f"{val:.2f}"
 
 
-def build_svg(progress_pct: int, bar_width: int) -> str:
-    """Generates the SVG progress bar with a rounded pill clip-path."""
+def build_svg(progress_pct: int, bar_width: int, is_completed: bool) -> str:
+    """Generates the SVG progress bar and displays 'Goal Completed!' once reached."""
+    if is_completed:
+        label_text = f"Goal Completed! ({progress_pct}%)"
+        aria_text = f"Goal Completed at {progress_pct} percent funding progress"
+        bar_fill = "#16a34a"  # Rich emerald green on completion
+    else:
+        label_text = f"{progress_pct}%"
+        aria_text = f"{progress_pct} percent funding progress"
+        bar_fill = "#22c55e"
+
     return (
         f'<svg width="400" height="28" viewBox="0 0 400 28" xmlns="http://www.w3.org/2000/svg" '
-        f'role="img" aria-label="{progress_pct} percent funding progress">\n'
+        f'role="img" aria-label="{aria_text}">\n'
         f'  <defs>\n'
         f'    <clipPath id="pill-clip">\n'
         f'      <rect x="0" y="2" width="400" height="24" rx="12"/>\n'
         f'    </clipPath>\n'
         f'  </defs>\n'
         f'  <rect x="0" y="2" width="400" height="24" rx="12" fill="#2d3748"/>\n'
-        f'  <rect x="0" y="2" width="{bar_width}" height="24" fill="#22c55e" clip-path="url(#pill-clip)"/>\n'
+        f'  <rect x="0" y="2" width="{bar_width}" height="24" fill="{bar_fill}" clip-path="url(#pill-clip)"/>\n'
         f'  <text x="200" y="19" text-anchor="middle" font-family="Arial, sans-serif" '
-        f'font-size="13" font-weight="bold" fill="#ffffff">{progress_pct}%</text>\n'
+        f'font-size="13" font-weight="bold" fill="#ffffff">{label_text}</text>\n'
         f'</svg>\n'
     )
 
@@ -100,16 +109,26 @@ def main():
     # 3. Fetch paid product revenue from Lemon Squeezy
     raised_usd = fetch_product_revenue_usd(API_KEY, PRODUCT_ID)
 
-    # 4. Calculate percentage and SVG fill width (out of 400px)
+    # 4. Calculate percentage, completion state, and SVG fill width (max 400px)
     raw_pct = (raised_usd / goal_usd * 100) if goal_usd > 0 else 0
     progress_pct = int(round(raw_pct))
+    is_completed = raised_usd >= goal_usd and goal_usd > 0
+
     clamped_pct = min(100, max(0, progress_pct))
-    bar_width = int(round((clamped_pct / 100.0) * 400))
+    bar_width = 400 if is_completed else int(round((clamped_pct / 100.0) * 400))
 
     raised_str = format_amount(raised_usd)
     goal_str = format_amount(goal_usd)
 
-    # 5. Update badges and alt attributes in README.md
+    # 5. Build Progress badge URL & alt text based on completion status
+    if is_completed:
+        progress_badge = f"badge/Progress-Goal_Completed!_({progress_pct}%25)-22c55e"
+        progress_alt = f'alt="Funding Progress Goal Completed ({progress_pct}%)"'
+    else:
+        progress_badge = f"badge/Progress-{progress_pct}%25-ea580c"
+        progress_alt = f'alt="Funding Progress {progress_pct}%"'
+
+    # 6. Update badges and alt attributes in README.md
     updated_section = re.sub(
         r"badge/Raised-\$[0-9.,]+-22c55e",
         f"badge/Raised-${raised_str}-22c55e",
@@ -126,21 +145,23 @@ def main():
         updated_section,
     )
     updated_section = re.sub(
-        r"badge/Progress-[0-9]+%25-ea580c",
-        f"badge/Progress-{progress_pct}%25-ea580c",
+        r"badge/Progress-[^?]+",
+        progress_badge,
         updated_section,
     )
     updated_section = re.sub(
-        r'alt="Funding Progress [0-9]+%"',
-        f'alt="Funding Progress {progress_pct}%"',
+        r'alt="Funding Progress [^"]+"',
+        progress_alt,
         updated_section,
     )
 
-    # 6. Write the updated SVG to .github/workflow/funding/progress.svg
+    # 7. Write the updated SVG to .github/workflow/funding/progress.svg
     SVG_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    SVG_OUTPUT_PATH.write_text(build_svg(progress_pct, bar_width), encoding="utf-8")
+    SVG_OUTPUT_PATH.write_text(
+        build_svg(progress_pct, bar_width, is_completed), encoding="utf-8"
+    )
 
-    # 7. Save updated README.md
+    # 8. Save updated README.md
     if match:
         new_content = (
             content[: match.start(2)] + updated_section + content[match.end(2) :]
@@ -149,7 +170,8 @@ def main():
         new_content = updated_section
 
     README_PATH.write_text(new_content, encoding="utf-8")
-    print(f"Synced: Raised ${raised_str} / ${goal_str} ({progress_pct}%)")
+    status_msg = "GOAL COMPLETED!" if is_completed else "In Progress"
+    print(f"Synced ({status_msg}): Raised ${raised_str} / ${goal_str} ({progress_pct}%)")
 
 
 if __name__ == "__main__":
