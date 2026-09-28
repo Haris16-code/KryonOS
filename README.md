@@ -26,7 +26,35 @@
   •
   <a href="https://github.com/Haris16-code/KryonOS/issues">Issues</a>
 </p>
+<br>
+<p>
+  <strong>Support KryonOS Hardware Development</strong>
+</p>
 
+<p>
+  Help support KryonOS development by contributing toward the hardware, boards, and resources needed for development, testing, and official board support.
+</p>
+<p>
+  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+    <img src="https://img.shields.io/badge/Raised-$0-22c55e?style=for-the-badge&logo=cashapp&logoColor=white" alt="Raised $0" />
+  </a>
+  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+    <img src="https://img.shields.io/badge/Goal-$200-0284c7?style=for-the-badge&logo=target&logoColor=white" alt="Funding Goal $200" />
+  </a>
+  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+    <img src="https://img.shields.io/badge/Progress-0%25-ea580c?style=for-the-badge" alt="Funding Progress 0%" />
+  </a>
+</p>
+
+<p>
+  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+    <img src=".github/workflow/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
+  </a>
+</p>
+<p>
+ <sub> Funds will help support KryonOS development and testing, including acquiring
+  development boards and hardware needed for new features, compatibility, and official board support.</sub>
+</p>
 </div>
 <hr>
 <p>KryonOS is an <strong>open-source</strong>, lightweight, high-performance <strong>GUI Operating System and JavaScript App Runtime</strong> designed specifically for the ESP32 and ESP32-S3 microcontrollers. It provides a complete desktop-like experience on embedded devices, featuring an integrated JS engine (Duktape) for executing standalone JavaScript applications, double-buffered graphics for smooth 2D/3D rendering, KryonCloud services, on-device AI streaming, an App Store, file management, and direct hardware API access.</p>
