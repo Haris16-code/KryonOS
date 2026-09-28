@@ -1,4 +1,5 @@
 #include "FileSystem.h"
+#include "Hal/Boards/Board.h"
 #include <mbedtls/md5.h>
 
 static SPIClass *sdSPI = nullptr;
@@ -66,7 +67,10 @@ bool FileSystem::init() {
     }
 
     // Initialize dedicated SPI bus for SD Card at runtime
-#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ARDUINO_USB_CDC_ON_BOOT)
+    // NOTE: key this off the *chip*, never off ARDUINO_USB_CDC_ON_BOOT. The Arduino core always
+    // defines that macro -- as 0 when USB CDC is off (cores/esp32/HardwareSerial.h) -- so testing it
+    // with a bare defined() compiles the ESP32-S3 pin map into classic-ESP32 builds.
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
     pinMode(42, OUTPUT);
     digitalWrite(42, HIGH);    // De-select SD card CS during startup
     pinMode(39, INPUT_PULLUP); // Enable internal pull-up on MISO/DO for reliable card response
@@ -121,6 +125,11 @@ bool FileSystem::init() {
     } else {
         Serial.println("SD Card: Mount failed (Verify 5V power, FAT32 format, & wiring: CS=42, MOSI=40, MISO=39, SCK=41)");
     }
+#elif defined(TARGET_CYD)
+    // CYD has its own micro-SD slot on a dedicated VSPI bus. Delegate to the board layer so the pin
+    // map lives in one place (cyd/BoardConfig.cpp). Do not fold this into the #else below: that one
+    // is the esp32doit-devkit-v1 map, whose SCK/MOSI 14/13 and CS 15 are this board's TFT pins.
+    sdMounted = (initSD() != nullptr);
 #else
     pinMode(15, OUTPUT);
     digitalWrite(15, HIGH);
@@ -595,7 +604,7 @@ String FileSystem::getFileMD5(const char* path) {
 }
 
 bool FileSystem::mountSD() {
-#if defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ARDUINO_USB_CDC_ON_BOOT)
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
     pinMode(42, OUTPUT);
     digitalWrite(42, HIGH);
     pinMode(39, INPUT_PULLUP);
@@ -616,6 +625,8 @@ bool FileSystem::mountSD() {
     sdMounted = (SD.begin(42, *sdSPI, 4000000, "/sd", 5, false) || 
                  SD.begin(42, *sdSPI, 1000000, "/sd", 5, false) || 
                  SD.begin(42, *sdSPI, 400000, "/sd", 5, false));
+#elif defined(TARGET_CYD)
+    sdMounted = (initSD() != nullptr);
 #else
     if (!sdSPI) return false;
     pinMode(15, OUTPUT);
