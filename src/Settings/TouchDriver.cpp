@@ -4,35 +4,8 @@ TFT_eSPI *TouchDriver::tftInstance = nullptr;
 uint16_t TouchDriver::calData[5] = {0, 0, 0, 0, 0};
 bool TouchDriver::hasCalData = false;
 
-#if defined(TOUCH_CS_PIN)
-#define T_CS_PIN TOUCH_CS_PIN
-#elif defined(TOUCH_CS)
-#define T_CS_PIN TOUCH_CS
-#endif
-
-#if defined(TOUCH_CLK_PIN)
-#define T_CLK_PIN TOUCH_CLK_PIN
-#elif defined(TOUCH_CLK)
-#define T_CLK_PIN TOUCH_CLK
-#endif
-
-#if defined(TOUCH_DIN_PIN)
-#define T_DIN_PIN TOUCH_DIN_PIN
-#elif defined(TOUCH_DIN)
-#define T_DIN_PIN TOUCH_DIN
-#endif
-
-#if defined(TOUCH_DO_PIN)
-#define T_DO_PIN TOUCH_DO_PIN
-#elif defined(TOUCH_DO)
-#define T_DO_PIN TOUCH_DO
-#endif
-
-#if defined(TOUCH_IRQ_PIN)
-#define T_IRQ_PIN TOUCH_IRQ_PIN
-#elif defined(TOUCH_IRQ)
-#define T_IRQ_PIN TOUCH_IRQ
-#endif
+// The T_*_PIN macros (including the CYD's TOUCHSCREEN_*_PIN spelling) are resolved in
+// TouchDriver.h, so this file and the class declaration always agree on the same pins.
 
 #if defined(T_CLK_PIN) && defined(T_DIN_PIN) && defined(T_DO_PIN) && defined(T_CS_PIN)
 static inline void touchBitbangDelay() {
