@@ -22,7 +22,7 @@ String OTAManager::getBoardTargetName() {
     return "lilygo-t-hmi";
 #elif defined(TARGET_CYD)
     return "esp32-cyd-28";
-#elif defined(CONFIG_IDF_TARGET_ESP32S3) || defined(ARDUINO_USB_CDC_ON_BOOT)
+#elif defined(CONFIG_IDF_TARGET_ESP32S3) || (ARDUINO_USB_CDC_ON_BOOT == 1)
     return "esp32-s3-devkitc-1-n16r8";
 #else
     return "esp32doit-devkit-v1";
