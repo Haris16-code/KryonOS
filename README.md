@@ -48,7 +48,7 @@
 
 <p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src=".github/workflow/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
+    <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
   </a>
 </p>
 <p>
