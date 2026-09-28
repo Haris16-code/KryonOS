@@ -7,7 +7,7 @@
   },
   "boards": {
     "esp32-s3-devkitc-1-n16r8": {
-      "version": "2.0.1",
+      "version": "2.0.0",
       "type": "patch",
       "changelog": "- Fixed Octal PSRAM timing glitch on S3 DevKitC-1\n- Optimized USB-CDC serial throughput",
       "supports_ota": true,
