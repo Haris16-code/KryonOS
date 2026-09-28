@@ -61,7 +61,7 @@ def build_svg(progress_pct: int, bar_width: int, is_completed: bool) -> str:
     if is_completed:
         label_text = f"Goal Completed! ({progress_pct}%)"
         aria_text = f"Goal Completed at {progress_pct} percent funding progress"
-        bar_fill = "#16a34a"  # Rich emerald green on completion
+        bar_fill = "#16a34a"
     else:
         label_text = f"{progress_pct}%"
         aria_text = f"{progress_pct} percent funding progress"
