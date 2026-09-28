@@ -2,15 +2,15 @@ name: Sync Funding
 
 on:
   schedule:
-    - cron: "*/30 * * * *" # Runs every 30 minutes
-  workflow_dispatch:       # Manual trigger in GitHub Actions tab
-  repository_dispatch:     # Optional webhook trigger
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+  repository_dispatch:
     types: [lemon_squeezy_order]
   push:
     branches:
       - main
     paths:
-      - "README.md"        # Immediately recalculates if you edit Goal-$XXX in README
+      - "README.md"
 
 permissions:
   contents: write
