@@ -14,7 +14,6 @@
   <a href="https://github.com/Haris16-code/KryonOS/releases"><img src="https://img.shields.io/github/v/release/Haris16-code/KryonOS?style=for-the-badge&logo=github" alt="Latest Release" /></a>
   <a href="https://github.com/Haris16-code/KryonOS/stargazers"><img src="https://img.shields.io/github/stars/Haris16-code/KryonOS?style=for-the-badge&logo=github" alt="GitHub Stars" /></a>
   <a href="https://github.com/Haris16-code/KryonOS/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Haris16-code/KryonOS?style=for-the-badge" alt="License" /></a>
-  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0"><img src="https://img.shields.io/badge/Support_KryonOS-Pay_As_You_Want-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
 </p>
 
 <p>
@@ -45,7 +44,7 @@
     <img src="https://img.shields.io/badge/Progress-0%25-ea580c?style=for-the-badge" alt="Funding Progress 0%" />
   </a>
 </p>
-
+  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0"><img src="https://img.shields.io/badge/Support_KryonOS-Pay_As_You_Want-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
 <p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
     <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
