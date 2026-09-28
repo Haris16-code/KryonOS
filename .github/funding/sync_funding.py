@@ -9,7 +9,7 @@ API_KEY = os.environ.get("LEMONSQUEEZY_API_KEY")
 PRODUCT_ID = os.environ.get("LEMONSQUEEZY_PRODUCT_ID")
 
 README_PATH = Path("README.md")
-SVG_OUTPUT_PATH = Path(".github/workflow/funding/progress.svg")
+SVG_OUTPUT_PATH = Path(".github/funding/progress.svg")
 
 if not API_KEY or not PRODUCT_ID:
     print("Error: LEMONSQUEEZY_API_KEY and LEMONSQUEEZY_PRODUCT_ID must be set.")
