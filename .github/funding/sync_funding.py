@@ -155,7 +155,7 @@ def main():
         updated_section,
     )
 
-    # 7. Write the updated SVG to .github/workflow/funding/progress.svg
+    # 7. Write the updated SVG to .github/funding/progress.svg
     SVG_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     SVG_OUTPUT_PATH.write_text(
         build_svg(progress_pct, bar_width, is_completed), encoding="utf-8"
