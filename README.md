@@ -342,11 +342,11 @@ pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
     <td>Build applications for KryonOS.</td>
   </tr>
   <tr>
-    <td><a href="Documentation/JS_API_Guide.md"><strong>JavaScript API Guide</strong></a></td>
+    <td><a href="https://kryonos.harislab.tech/docs/javascript-api"><strong>JavaScript API Docs</strong></a></td>
     <td>APIs available to JavaScript applications.</td>
   </tr>
   <tr>
-    <td><a href="Documentation/Kryon3D_Engine_Guide.md"><strong>Kryon3D Engine Guide</strong></a></td>
+    <td><a href="https://kryonos.harislab.tech/docs/javascript-api/kryon3d"><strong>Kryon3D Engine Docs</strong></a></td>
     <td>Developing with the Kryon3D graphics engine.</td>
   </tr>
   <tr>
