@@ -28,7 +28,7 @@ jobs:
   # =========================================================================
   build:
     name: Compile ${{ matrix.board }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
@@ -41,18 +41,18 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: '3.12'
 
-      - name: Cache PlatformIO Toolchains & Packages
-        uses: actions/cache@v4
+      - name: Cache Pip & PlatformIO Toolchains
+        uses: actions/cache@v6
         with:
           path: |
+            ~/.cache/pip
             ~/.platformio/packages
             ~/.platformio/platforms
             ~/.platformio/.cache
@@ -124,7 +124,7 @@ jobs:
           } > "out/${ENV}.component_row"
 
       - name: Upload Board Artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-${{ matrix.board }}
           path: out/*
@@ -136,16 +136,23 @@ jobs:
   draft-release:
     name: Create GitHub Draft Release
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
       - name: Download All Compiled Board Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release_files
           merge-multiple: true
 
-      - name: Generate Markdown Release Notes & Flashing Tables
+      - name: Generate Markdown Release Notes & Create Draft Release
         shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
+          TITLE: ${{ inputs.release_title }}
         run: |
           set -euo pipefail
           NOTES="draft_notes.md"
@@ -174,17 +181,15 @@ jobs:
             done
           } > "$NOTES"
 
-          # Remove temporary table row files so only .bin files are attached to the release
           rm -f release_files/*.factory_row release_files/*.component_row
 
-      - name: Publish Unpublished Draft Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ inputs.tag_name }}
-          name: ${{ inputs.release_title }}
-          body_path: draft_notes.md
-          draft: true
-          prerelease: false
-          files: release_files/*.bin
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Create or update the unpublished Draft Release using GitHub's native CLI
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release_files/*.bin --clobber
+            gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES" --draft
+          else
+            gh release create "$TAG" release_files/*.bin \
+              --title "$TITLE" \
+              --notes-file "$NOTES" \
+              --draft
+          fi
