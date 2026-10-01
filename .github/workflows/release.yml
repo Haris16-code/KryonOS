@@ -23,8 +23,45 @@ permissions:
   contents: write
 
 jobs:
+  # =========================================================================
+  # JOB 1: Verify Release Tag Does Not Already Exist (Fails Fast in ~3s)
+  # =========================================================================
+  validate-tag:
+    name: Check Release Tag (${{ inputs.tag_name }})
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+
+      - name: Verify Tag & Release Availability
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag_name }}
+        run: |
+          set -euo pipefail
+
+          # 1. Check if any Published or Draft Release already uses this tag
+          EXISTING_RELEASE=$(gh api "repos/${GITHUB_REPOSITORY}/releases" --paginate --jq ".[] \vert{} select(.tag_name == \"${TAG}\") | .tag_name" || true)
+          if [ -n "$EXISTING_RELEASE" ]; then
+            echo "::error title=Release Tag Already Exists::The release tag '${TAG}' already exists (as a Published or Draft release). Please change the tag_name input before running this workflow."
+            exit 1
+          fi
+
+          # 2. Check if the Git tag already exists in the repository
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error title=Git Tag Already Exists::The Git tag '${TAG}' already exists in the repository. Please enter a new version tag before running this workflow."
+            exit 1
+          fi
+
+          echo "Tag '${TAG}' is available. Proceeding to compile boards..."
+
+  # =========================================================================
+  # JOB 2: Compile All 5 Boards Simultaneously (Only Runs if Tag is New)
+  # =========================================================================
   build:
     name: Compile ${{ matrix.board }}
+    needs: validate-tag
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -57,10 +94,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pio-${{ matrix.board }}-${{ runner.os }}-pio-
 
-      - name: Install PlatformIO & Esptool
+      - name: Install PlatformIO
         run: |
           python -m pip install --upgrade pip
-          pip install --upgrade platformio esptool
+          pip install --upgrade platformio
 
       - name: Compile Board Target
         env:
@@ -72,7 +109,7 @@ jobs:
           fi
           pio run -e "$BOARD_ENV"
 
-      - name: Package Binaries, Merge Factory Image & Compute SHA-256
+      - name: Package Binaries & Compute SHA-256
         shell: bash
         env:
           TAG: ${{ inputs.tag_name }}
@@ -84,16 +121,13 @@ jobs:
 
           case "${BOARD_ENV}" in
             esp32-cyd-28|esp32doit-devkit-v1)
-              CHIP="esp32"
               BOOT_OFFSET="0x1000"
               ;;
             *)
-              CHIP="esp32s3"
               BOOT_OFFSET="0x0000"
               ;;
           esac
 
-          FACTORY_FILE="KryonOS-${TAG}-${BOARD_ENV}-factory-0x0000.bin"
           APP_FILE="KryonOS-${TAG}-${BOARD_ENV}-firmware-0x10000.bin"
           PART_FILE="KryonOS-${TAG}-${BOARD_ENV}-partitions-0x8000.bin"
           BOOT_FILE="KryonOS-${TAG}-${BOARD_ENV}-bootloader-${BOOT_OFFSET}.bin"
@@ -102,24 +136,15 @@ jobs:
           cp "${BUILD_DIR}/partitions.bin" "out/${PART_FILE}"
           cp "${BUILD_DIR}/bootloader.bin" "out/${BOOT_FILE}"
 
-          python3 -m esptool --chip "${CHIP}" merge_bin \
-            -o "out/${FACTORY_FILE}" \
-            "${BOOT_OFFSET}" "out/${BOOT_FILE}" \
-            0x8000 "out/${PART_FILE}" \
-            0x10000 "out/${APP_FILE}"
-
-          FACTORY_HASH=$(sha256sum "out/${FACTORY_FILE}" | awk '{print $1}')
           APP_HASH=$(sha256sum "out/${APP_FILE}" | awk '{print $1}')
           PART_HASH=$(sha256sum "out/${PART_FILE}" | awk '{print $1}')
           BOOT_HASH=$(sha256sum "out/${BOOT_FILE}" | awk '{print $1}')
 
-          echo "| **${BOARD_ENV}** | \`${FACTORY_FILE}\` | \`0x0000\` | \`${FACTORY_HASH}\` |" > "out/${BOARD_ENV}.factory_row"
-
           {
-            echo "| **${BOARD_ENV}** | \`${APP_FILE}\` | \`0x10000\` | Application (OTA) | \`${APP_HASH}\` |"
-            echo "| **${BOARD_ENV}** | \`${PART_FILE}\` | \`0x8000\` | Partition Table | \`${PART_HASH}\` |"
             echo "| **${BOARD_ENV}** | \`${BOOT_FILE}\` | \`${BOOT_OFFSET}\` | Bootloader | \`${BOOT_HASH}\` |"
-          } > "out/${BOARD_ENV}.component_row"
+            echo "| **${BOARD_ENV}** | \`${PART_FILE}\` | \`0x8000\` | Partition Table | \`${PART_HASH}\` |"
+            echo "| **${BOARD_ENV}** | \`${APP_FILE}\` | \`0x10000\` | Firmware (App) | \`${APP_HASH}\` |"
+          } > "out/${BOARD_ENV}.row"
 
       - name: Upload Board Artifacts
         uses: actions/upload-artifact@v7
@@ -128,6 +153,9 @@ jobs:
           path: out/*
           retention-days: 1
 
+  # =========================================================================
+  # JOB 3: Assemble Flashing Table & Create Unpublished Draft Release
+  # =========================================================================
   draft-release:
     name: Create GitHub Draft Release
     needs: build
@@ -156,34 +184,17 @@ jobs:
             echo "## Release Highlights"
             echo "<!-- Replace this comment with your release notes, features, and changelog before clicking Publish -->"
             echo ""
-            echo "### Recommended: All-in-One Factory Images (\`0x0000\`)"
-            echo "Flash the single factory binary for your board starting at address \`0x0000\`:"
-            echo ""
-            echo "| Board Target | Factory Binary File | Flash Offset | SHA-256 Checksum |"
-            echo "| :--- | :--- | :--- | :--- |"
-            for f in release_files/*.factory_row; do
-              cat "$f"
-            done
-            echo ""
-            echo "---"
-            echo "### Individual Component Binaries & Offsets"
-            echo "For manual segment flashing or OTA firmware updates:"
-            echo ""
+            echo "### Firmware Binaries & Flash Offsets"
             echo "| Board Target | File Name | Flash Offset | Role | SHA-256 Checksum |"
             echo "| :--- | :--- | :--- | :--- | :--- |"
-            for f in release_files/*.component_row; do
+            for f in release_files/*.row; do
               cat "$f"
             done
           } > "$NOTES"
 
-          rm -f release_files/*.factory_row release_files/*.component_row
+          rm -f release_files/*.row
 
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            gh release upload "$TAG" release_files/*.bin --clobber
-            gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES" --draft
-          else
-            gh release create "$TAG" release_files/*.bin \
-              --title "$TITLE" \
-              --notes-file "$NOTES" \
-              --draft
-          fi
+          gh release create "$TAG" release_files/*.bin \
+            --title "$TITLE" \
+            --notes-file "$NOTES" \
+            --draft
