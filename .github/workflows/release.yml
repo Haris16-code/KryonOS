@@ -1,0 +1,190 @@
+name: Build & Draft KryonOS Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g., v2.0.1)'
+        required: true
+        type: string
+        default: 'v2.0.1'
+      release_title:
+        description: 'Release Title'
+        required: true
+        type: string
+        default: 'KryonOS v2.0.1'
+      clean_cache:
+        description: 'Force clean build before compiling?'
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  # =========================================================================
+  # JOB 1: Compile All 5 Boards Simultaneously (Isolated Parallel Runners)
+  # =========================================================================
+  build:
+    name: Compile ${{ matrix.board }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - esp32-s3-devkitc-1-n16r8
+          - lilygo-t-hmi
+          - m5stack-cardputer
+          - esp32-cyd-28
+          - esp32doit-devkit-v1
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Cache PlatformIO Toolchains & Packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio/packages
+            ~/.platformio/platforms
+            ~/.platformio/.cache
+          key: ${{ runner.os }}-pio-${{ matrix.board }}-${{ hashFiles('platformio.ini') }}
+          restore-keys: |
+            ${{ runner.os }}-pio-${{ matrix.board }}-${{ runner.os }}-pio-
+
+      - name: Install PlatformIO & Esptool
+        run: |
+          python -m pip install --upgrade pip
+          pip install --upgrade platformio esptool
+
+      - name: Compile Board Target
+        run: |
+          if [ "${{ inputs.clean_cache }}" = "true" ]; then
+            pio run -t clean -e ${{ matrix.board }}
+          fi
+          pio run -e ${{ matrix.board }}
+
+      - name: Package Binaries, Merge Factory Image & Compute SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ inputs.tag_name }}"
+          ENV="${{ matrix.board }}"
+          BUILD_DIR=".pio/build/$ENV"
+          mkdir -p out
+
+          # Classic ESP32 uses 0x1000 for bootloader; ESP32-S3 uses 0x0000
+          if [[ "$ENV" == "esp32-cyd-28" \vert{}\vert{} "$ENV" == "esp32doit-devkit-v1" ]]; then
+            CHIP="esp32"
+            BOOT_OFFSET="0x1000"
+          else
+            CHIP="esp32s3"
+            BOOT_OFFSET="0x0000"
+          fi
+
+          FACTORY_FILE="KryonOS-${TAG}-${ENV}-factory-0x0000.bin"
+          APP_FILE="KryonOS-${TAG}-${ENV}-firmware-0x10000.bin"
+          PART_FILE="KryonOS-${TAG}-${ENV}-partitions-0x8000.bin"
+          BOOT_FILE="KryonOS-${TAG}-${ENV}-bootloader-${BOOT_OFFSET}.bin"
+
+          # Copy individual component binaries
+          cp "$BUILD_DIR/firmware.bin" "out/$APP_FILE"
+          cp "$BUILD_DIR/partitions.bin" "out/$PART_FILE"
+          cp "$BUILD_DIR/bootloader.bin" "out/$BOOT_FILE"
+
+          # Merge into a single 0x0000 factory binary using esptool
+          python -m esptool --chip "$CHIP" merge_bin \
+            -o "out/$FACTORY_FILE" \
+            "$BOOT_OFFSET" "out/$BOOT_FILE" \
+            0x8000 "out/$PART_FILE" \
+            0x10000 "out/$APP_FILE"
+
+          # Compute SHA-256 hashes
+          FACTORY_HASH=$(sha256sum "out/$FACTORY_FILE" | awk '{print $1}')
+          APP_HASH=$(sha256sum "out/$APP_FILE" | awk '{print $1}')
+          PART_HASH=$(sha256sum "out/$PART_FILE" | awk '{print $1}')
+          BOOT_HASH=$(sha256sum "out/$BOOT_FILE" | awk '{print $1}')
+
+          # Save factory table row
+          echo "| **$ENV** | \`$FACTORY_FILE\` | \`0x0000\` | \`$FACTORY_HASH\` |" > "out/${ENV}.factory_row"
+
+          # Save component table rows
+          {
+            echo "| **$ENV** | \`$APP_FILE\` | \`0x10000\` | Application (OTA) | \`$APP_HASH\` |"
+            echo "| **$ENV** | \`$PART_FILE\` | \`0x8000\` | Partition Table | \`$PART_HASH\` |"
+            echo "| **$ENV** | \`$BOOT_FILE\` | \`$BOOT_OFFSET\` | Bootloader | \`$BOOT_HASH\` |"
+          } > "out/${ENV}.component_row"
+
+      - name: Upload Board Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.board }}
+          path: out/*
+          retention-days: 1
+
+  # =========================================================================
+  # JOB 2: Assemble Flashing Tables & Create Unpublished Draft Release
+  # =========================================================================
+  draft-release:
+    name: Create GitHub Draft Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download All Compiled Board Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release_files
+          merge-multiple: true
+
+      - name: Generate Markdown Release Notes & Flashing Tables
+        shell: bash
+        run: |
+          set -euo pipefail
+          NOTES="draft_notes.md"
+
+          {
+            echo "## Release Highlights"
+            echo "<!-- Replace this comment with your release notes, features, and changelog before clicking Publish -->"
+            echo ""
+            echo "### Recommended: All-in-One Factory Images (\`0x0000\`)"
+            echo "Flash the single factory binary for your board starting at address \`0x0000\`:"
+            echo ""
+            echo "| Board Target | Factory Binary File | Flash Offset | SHA-256 Checksum |"
+            echo "| :--- | :--- | :--- | :--- |"
+            for f in $(ls release_files/*.factory_row | sort); do
+              cat "$f"
+            done
+            echo ""
+            echo "---"
+            echo "### Individual Component Binaries & Offsets"
+            echo "For manual segment flashing or OTA firmware updates:"
+            echo ""
+            echo "| Board Target | File Name | Flash Offset | Role | SHA-256 Checksum |"
+            echo "| :--- | :--- | :--- | :--- | :--- |"
+            for f in $(ls release_files/*.component_row | sort); do
+              cat "$f"
+            done
+          } > "$NOTES"
+
+          # Remove temporary table row files so only .bin files are attached to the release
+          rm -f release_files/*.factory_row release_files/*.component_row
+
+      - name: Publish Unpublished Draft Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          name: ${{ inputs.release_title }}
+          body_path: draft_notes.md
+          draft: true
+          prerelease: false
+          files: release_files/*.bin
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
