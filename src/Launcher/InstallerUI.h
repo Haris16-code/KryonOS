@@ -3,7 +3,8 @@
 
 #include <TFT_eSPI.h>
 #include <Arduino.h>
-#include "../File System/FileSystem.h"
+#include <vector>
+#include "../FileSystem/FileSystem.h"
 
 struct AppMetadata {
     String name;
@@ -16,6 +17,7 @@ struct AppMetadata {
     String description;
     String changelog;
     String folderPath; // Full path to the app folder (e.g. /sd/Downloads/Calculator/)
+    std::vector<String> permissions;
     bool valid;
 };
 

@@ -1,0 +1,4 @@
+{
+  "title": "System Apps vs User Apps",
+  "content": "KryonOS architecture separates core services and applications:\n\n- System Apps: Compiled directly in C++ (Settings, App Store, Installer, Help Center, KryonCloud) for maximum speed and direct hardware control.\n- User Apps: Written in modern JavaScript (ES5.1) and executed securely inside the sandboxed Duktape engine from LittleFS or SD Card."
+}

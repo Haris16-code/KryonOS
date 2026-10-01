@@ -1,0 +1,4 @@
+{
+  "title": "Time Zones & Clock Sync",
+  "content": "KryonOS maintains accurate system time:\n\n- Automatically synchronizes with global SNTP time servers upon connecting to Wi-Fi.\n- Open Settings -> Time & Region to change your local timezone, enable 12h/24h time display, or toggle automatic network time synchronization."
+}

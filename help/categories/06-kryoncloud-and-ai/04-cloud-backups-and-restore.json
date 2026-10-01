@@ -1,0 +1,4 @@
+{
+  "title": "Cloud Backups & Restore",
+  "content": "Protect your device settings and files:\n\n- Open KryonCloud -> Cloud Storage tab.\n- Create an encrypted full device backup uploaded to your private cloud storage.\n- In case of SD card replacement or device reinstall, restore your backup with one click to recover network credentials and app data."
+}

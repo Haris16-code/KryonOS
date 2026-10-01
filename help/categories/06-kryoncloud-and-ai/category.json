@@ -1,0 +1,21 @@
+{
+  "category": "KryonCloud and AI",
+  "articles": [
+    {
+      "title": "Pairing KryonCloud Account",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/06-kryoncloud-and-ai/01-pairing-device-account.json"
+    },
+    {
+      "title": "KryonAI Studio Assistant",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/06-kryoncloud-and-ai/02-kryonai-studio-assistant.json"
+    },
+    {
+      "title": "KryonBeam Messaging",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/06-kryoncloud-and-ai/03-kryonbeam-mesh-messaging.json"
+    },
+    {
+      "title": "Cloud Backups & Restore",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/06-kryoncloud-and-ai/04-cloud-backups-and-restore.json"
+    }
+  ]
+}

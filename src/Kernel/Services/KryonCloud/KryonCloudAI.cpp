@@ -1,5 +1,6 @@
 #include "KryonCloudAI.h"
 #include "KryonCloudManager.h"
+#include "../Network/TLSHelper.h"
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 
@@ -19,11 +20,11 @@ bool KryonCloudAI::stream(const String& prompt,
         return false;
     }
 
+    String url = String(KryonCloudManager::getBaseUrl()) + "/api/services/ai";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(KryonCloudManager::getBaseUrl()) + "/api/services/ai";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", KryonCloudManager::getAuthToken());
@@ -135,11 +136,11 @@ bool KryonCloudAI::ask(const String& prompt,
         return false;
     }
 
+    String url = String(KryonCloudManager::getBaseUrl()) + "/api/services/ai";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(KryonCloudManager::getBaseUrl()) + "/api/services/ai";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", KryonCloudManager::getAuthToken());

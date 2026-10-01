@@ -10,7 +10,7 @@
 #include "../Kernel/Core/HarixKernel.h"
 #include "../Kernel/WiFiManager.h"
 #include "../Settings/TouchDriver.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
 #include "../Keyboard/MyKeyboard.h"
 #include "../WebManager/WebManager.h"
 #include "../Kernel/TimeManager.h"
@@ -2219,6 +2219,22 @@ void JSBindings::pollActiveWebSockets(duk_context *ctx) {
 }
 
 void JSBindings::cleanup(duk_context *ctx) {
+    if (tftSprite) {
+        tftSprite->deleteSprite();
+        delete tftSprite;
+        tftSprite = nullptr;
+    }
+    useSprite = false;
+
+    if (sprite3D) {
+        sprite3D->deleteSprite();
+        delete sprite3D;
+        sprite3D = nullptr;
+    }
+    directDrawMode = false;
+    buffer3DWidth = 0;
+    buffer3DHeight = 0;
+
     PWMEngine::reset();
     I2CEngine::reset();
     IPCManager::clearMessageCallback();
@@ -2359,13 +2375,226 @@ duk_ret_t JSBindings::js_http_notFound(duk_context *ctx) {
 }
 
 // =====================================================
-// FileSystem Bindings
+// FileSystem Sandboxing & Bindings
 // =====================================================
+
+static String s_sandboxRoot = "";
+static std::vector<String> s_sessionGrantedPackages;
+
+void JSBindings::setSandboxRoot(const String& root) {
+    s_sandboxRoot = root;
+    if (s_sandboxRoot.length() > 0 && !s_sandboxRoot.endsWith("/")) {
+        s_sandboxRoot += "/";
+    }
+}
+
+String JSBindings::getSandboxRoot() {
+    return s_sandboxRoot;
+}
+
+void JSBindings::revokeSessionPermission(const String& pkg) {
+    for (auto it = s_sessionGrantedPackages.begin(); it != s_sessionGrantedPackages.end(); ) {
+        if (*it == pkg) {
+            it = s_sessionGrantedPackages.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void JSBindings::clearAllSessionPermissions() {
+    s_sessionGrantedPackages.clear();
+}
+
+static String getAppPackageName() {
+    if (s_sandboxRoot.length() == 0) return "";
+    String s = s_sandboxRoot;
+    if (s.endsWith("/")) s = s.substring(0, s.length() - 1);
+    int lastSlash = s.lastIndexOf('/');
+    if (lastSlash >= 0) return s.substring(lastSlash + 1);
+    return s;
+}
+
+static bool isStoragePermissionPersisted(const String& pkg) {
+    if (pkg.length() == 0) return true;
+    String path = "/local/system/app_permissions.json";
+    if (!FileSystem::exists(path.c_str())) return false;
+    String content = FileSystem::readTextFile(path.c_str());
+    if (content.length() == 0) return false;
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, content);
+    if (err) return false;
+    JsonArray arr = doc[pkg].as<JsonArray>();
+    if (arr.isNull()) return false;
+    for (JsonVariant v : arr) {
+        if (v.as<String>() == "storage") return true;
+    }
+    return false;
+}
+
+static void persistStoragePermission(const String& pkg) {
+    if (pkg.length() == 0) return;
+    String path = "/local/system/app_permissions.json";
+    JsonDocument doc;
+    if (FileSystem::exists(path.c_str())) {
+        String existing = FileSystem::readTextFile(path.c_str());
+        deserializeJson(doc, existing);
+    }
+    JsonArray arr = doc[pkg].to<JsonArray>();
+    bool found = false;
+    for (JsonVariant v : arr) {
+        if (v.as<String>() == "storage") { found = true; break; }
+    }
+    if (!found) {
+        arr.add("storage");
+    }
+    String out;
+    serializeJson(doc, out);
+    FileSystem::writeTextFile(path.c_str(), out.c_str());
+}
+
+static bool isSessionStorageGranted(const String& pkg) {
+    for (const auto& p : s_sessionGrantedPackages) {
+        if (p == pkg) return true;
+    }
+    return false;
+}
+
+static void grantSessionStorage(const String& pkg) {
+    if (!isSessionStorageGranted(pkg)) {
+        s_sessionGrantedPackages.push_back(pkg);
+    }
+}
+
+static bool promptStoragePermission(const String& pkg, const String& targetPath) {
+    TFT_eSPI* tft = JSBindings::getTFT();
+    if (!tft) return false;
+
+    // Draw native modal dialog (centered 220x210 box)
+    tft->fillRoundRect(10, 35, 220, 220, 8, TFT_DARKGREY);
+    tft->drawRoundRect(10, 35, 220, 220, 8, TFT_WHITE);
+
+    tft->setTextDatum(MC_DATUM);
+    tft->setTextColor(TFT_GOLD, TFT_DARKGREY);
+    tft->drawString("Storage Permission", 120, 55, 2);
+
+    tft->setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft->drawString("App requests external access:", 120, 80, 2);
+
+    // Target path snippet
+    String displayPath = targetPath;
+    if (displayPath.length() > 22) {
+        displayPath = displayPath.substring(0, 19) + "...";
+    }
+    tft->setTextColor(TFT_CYAN, TFT_DARKGREY);
+    tft->drawString(displayPath, 120, 102, 2);
+
+    // Buttons
+    // 1. Allow Once (Session)
+    tft->fillRoundRect(20, 125, 200, 32, 4, TFT_BLUE);
+    tft->setTextColor(TFT_WHITE, TFT_BLUE);
+    tft->drawString("Allow Once", 120, 141, 2);
+
+    // 2. Always Allow (Persisted)
+    tft->fillRoundRect(20, 165, 200, 32, 4, TFT_GREEN);
+    tft->setTextColor(TFT_BLACK, TFT_GREEN);
+    tft->drawString("Always Allow", 120, 181, 2);
+
+    // 3. Deny
+    tft->fillRoundRect(20, 205, 200, 32, 4, TFT_RED);
+    tft->setTextColor(TFT_WHITE, TFT_RED);
+    tft->drawString("Deny", 120, 221, 2);
+
+    // Wait for touch with watchdog reset
+    uint16_t tx = 0, ty = 0;
+    while (true) {
+        if (TouchDriver::getTouch(&tx, &ty)) {
+            // Button 1: Allow Once (y: 125-157)
+            if (tx >= 20 && tx <= 220 && ty >= 125 && ty <= 157) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                grantSessionStorage(pkg);
+                return true;
+            }
+            // Button 2: Always Allow (y: 165-197)
+            else if (tx >= 20 && tx <= 220 && ty >= 165 && ty <= 197) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                grantSessionStorage(pkg);
+                persistStoragePermission(pkg);
+                return true;
+            }
+            // Button 3: Deny (y: 205-237)
+            else if (tx >= 20 && tx <= 220 && ty >= 205 && ty <= 237) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                return false;
+            }
+        }
+        delay(20);
+        esp_task_wdt_reset();
+    }
+}
+
+static String normalizePath(const String& path) {
+    if (path.indexOf("..") >= 0 || path.indexOf("\\") >= 0) return "__BLOCKED__";
+    String p = path;
+    while (p.indexOf("//") >= 0) p.replace("//", "/");
+    return p;
+}
+
+static String resolveAppPath(const char* rawPath) {
+    if (!rawPath || rawPath[0] == '\0') return "";
+    String p = String(rawPath);
+    if (!p.startsWith("/") && !p.startsWith("local/") && !p.startsWith("sd/") && !p.startsWith("littlefs/")) {
+        if (s_sandboxRoot.length() > 0) {
+            p = s_sandboxRoot + p;
+        }
+    }
+    while (p.indexOf("//") >= 0) p.replace("//", "/");
+    return p;
+}
+
+static bool isPathAllowed(const char* rawPath) {
+    if (!rawPath || rawPath[0] == '\0') return false;
+    if (s_sandboxRoot.length() == 0) return true; // System app / unrestricted
+
+    String resolved = resolveAppPath(rawPath);
+    String normalized = normalizePath(resolved);
+    if (normalized == "__BLOCKED__") return false;
+
+    // Reject system paths and sensitive files
+    if (FileSystem::isSystemPath(normalized.c_str())) return false;
+
+    // Check sandbox boundary
+    String normSandbox = s_sandboxRoot;
+    while (normSandbox.indexOf("//") >= 0) normSandbox.replace("//", "/");
+
+    String checkPath = normalized;
+    if (!checkPath.startsWith("/") && normSandbox.startsWith("/")) {
+        checkPath = "/" + checkPath;
+    }
+
+    if (checkPath.startsWith(normSandbox)) {
+        return true; // Inside app's own folder -> ALWAYS ALLOWED without permission prompt
+    }
+
+    // Accessing outside app folder: Check if granted or prompt user
+    String pkg = getAppPackageName();
+    if (isSessionStorageGranted(pkg) || isStoragePermissionPersisted(pkg)) {
+        return true;
+    }
+
+    // Trigger native permission dialog
+    return promptStoragePermission(pkg, normalized);
+}
 
 duk_ret_t JSBindings::js_readTextFile(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    String content = FileSystem::readTextFile(path);
-    if (content.length() == 0 && !FileSystem::exists(path)) {
+    if (!isPathAllowed(path)) {
+        duk_push_null(ctx);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    String content = FileSystem::readTextFile(fullPath.c_str());
+    if (content.length() == 0 && !FileSystem::exists(fullPath.c_str())) {
         duk_push_null(ctx);
     } else {
         duk_push_string(ctx, content.c_str());
@@ -2376,29 +2605,49 @@ duk_ret_t JSBindings::js_readTextFile(duk_context *ctx) {
 duk_ret_t JSBindings::js_writeTextFile(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
     const char *content = duk_require_string(ctx, 1);
-    bool success = FileSystem::writeTextFile(path, content);
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    bool success = FileSystem::writeTextFile(fullPath.c_str(), content);
     duk_push_boolean(ctx, success);
     return 1;
 }
 
 duk_ret_t JSBindings::js_deleteFile(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    bool success = FileSystem::deleteFile(path);
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    bool success = FileSystem::deleteFile(fullPath.c_str());
     duk_push_boolean(ctx, success);
     return 1;
 }
 
 duk_ret_t JSBindings::js_fileExists(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    bool exists = FileSystem::exists(path);
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    bool exists = FileSystem::exists(fullPath.c_str());
     duk_push_boolean(ctx, exists);
     return 1;
 }
 
 duk_ret_t JSBindings::js_listDir(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
+    if (!isPathAllowed(path)) {
+        duk_push_array(ctx);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
     String files[30];
-    int count = FileSystem::listDir(path, files, 30);
+    int count = FileSystem::listDir(fullPath.c_str(), files, 30);
     
     duk_push_array(ctx);
     for (int i = 0; i < count; i++) {
@@ -2411,44 +2660,80 @@ duk_ret_t JSBindings::js_listDir(duk_context *ctx) {
 duk_ret_t JSBindings::js_appendTextFile(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
     const char *content = duk_require_string(ctx, 1);
-    duk_push_boolean(ctx, FileSystem::appendTextFile(path, content));
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_boolean(ctx, FileSystem::appendTextFile(fullPath.c_str(), content));
     return 1;
 }
 
 duk_ret_t JSBindings::js_renameFile(duk_context *ctx) {
     const char *pathFrom = duk_require_string(ctx, 0);
     const char *pathTo = duk_require_string(ctx, 1);
-    duk_push_boolean(ctx, FileSystem::renameFile(pathFrom, pathTo));
+    if (!isPathAllowed(pathFrom) || !isPathAllowed(pathTo)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullFrom = resolveAppPath(pathFrom);
+    String fullTo = resolveAppPath(pathTo);
+    duk_push_boolean(ctx, FileSystem::renameFile(fullFrom.c_str(), fullTo.c_str()));
     return 1;
 }
 
 duk_ret_t JSBindings::js_mkdir(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    duk_push_boolean(ctx, FileSystem::mkdir(path));
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_boolean(ctx, FileSystem::mkdir(fullPath.c_str()));
     return 1;
 }
 
 duk_ret_t JSBindings::js_rmdir(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    duk_push_boolean(ctx, FileSystem::rmdir(path));
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_boolean(ctx, FileSystem::rmdir(fullPath.c_str()));
     return 1;
 }
 
 duk_ret_t JSBindings::js_isDirectory(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    duk_push_boolean(ctx, FileSystem::isDirectory(path));
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_boolean(ctx, FileSystem::isDirectory(fullPath.c_str()));
     return 1;
 }
 
 duk_ret_t JSBindings::js_isFile(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    duk_push_boolean(ctx, FileSystem::isFile(path));
+    if (!isPathAllowed(path)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_boolean(ctx, FileSystem::isFile(fullPath.c_str()));
     return 1;
 }
 
 duk_ret_t JSBindings::js_getFileSize(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    duk_push_uint(ctx, FileSystem::getFileSize(path));
+    if (!isPathAllowed(path)) {
+        duk_push_uint(ctx, 0);
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_uint(ctx, FileSystem::getFileSize(fullPath.c_str()));
     return 1;
 }
 
@@ -2472,7 +2757,12 @@ duk_ret_t JSBindings::js_getFreeSpace(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_getFileMD5(duk_context *ctx) {
     const char *path = duk_require_string(ctx, 0);
-    duk_push_string(ctx, FileSystem::getFileMD5(path).c_str());
+    if (!isPathAllowed(path)) {
+        duk_push_string(ctx, "");
+        return 1;
+    }
+    String fullPath = resolveAppPath(path);
+    duk_push_string(ctx, FileSystem::getFileMD5(fullPath.c_str()).c_str());
     return 1;
 }
 

@@ -1,0 +1,11 @@
+{
+  "name": "Permission Tester",
+  "packageName": "com.kryonos.permtest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Tests internal sandbox storage vs external LittleFS and SD Card access with on-demand runtime permission prompts.",
+  "type": "Utility",
+  "category": "Diagnostics",
+  "api": 2,
+  "main": "main.js"
+}

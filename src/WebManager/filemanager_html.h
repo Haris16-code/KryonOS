@@ -413,7 +413,7 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
             display: none;
             position: absolute;
             inset: 16px 20px;
-            background: rgba(15, 23, 42, 0.85);
+            background: rgba(15, 23, 42, 0.88);
             border: 2px dashed var(--accent-cyan);
             border-radius: 8px;
             z-index: 20;
@@ -423,7 +423,8 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
             gap: 12px;
             color: var(--accent-cyan);
             font-weight: 600;
-            backdrop-filter: blur(2px);
+            backdrop-filter: blur(3px);
+            pointer-events: none;
         }
 
         /* Generic Modals */
@@ -581,6 +582,12 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
                 <span class="gh-star-count" id="header-gh-stars">★ --</span>
             </a>
 
+            <!-- Logout Button -->
+            <button class="btn btn-sm" onclick="logout()" title="Logout of Session" id="logout-btn" style="border-color: var(--accent-red); color: var(--accent-red);">
+                <svg class="icon" style="width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span>Logout</span>
+            </button>
+
             <!-- About Button -->
             <button class="btn btn-icon-only" onclick="openModal('about-modal')" title="About KryonOS & Community">
                 <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--accent-cyan);"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
@@ -729,6 +736,11 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
                         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m17 8-5-5-5 5"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg>
                         Upload
                         <input type="file" id="file-uploader" onchange="handleFileInput(this)">
+                    </label>
+                    <label class="btn" title="Upload Entire Folder">
+                        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/><path d="M12 11v6"/><path d="M9 14l3-3 3 3"/></svg>
+                        Upload Folder
+                        <input type="file" id="folder-uploader" webkitdirectory directory multiple onchange="handleFolderInput(this)" style="display:none;">
                     </label>
                 </div>
             </div>
@@ -1009,10 +1021,21 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
             }
         }
 
+        async function logout() {
+            try {
+                await fetch('/api/logout', { method: 'POST' });
+            } catch(e) {}
+            window.location.reload();
+        }
+
         // --- Storage Telemetry ---
         async function fetchStorageTelemetry() {
             try {
                 const res = await fetch('/api/storage');
+                if (res.status === 401 || res.status === 403) {
+                    window.location.reload();
+                    return;
+                }
                 if (!res.ok) return;
                 const data = await res.json();
                 
@@ -1123,6 +1146,10 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
             try {
                 const res = await fetch(targetUrl);
                 document.getElementById('loader').style.display = 'none';
+                if (res.status === 401 || res.status === 403) {
+                    window.location.reload();
+                    return;
+                }
                 if (!res.ok) throw new Error("List failed");
                 currentItems = await res.json();
                 renderItems(currentItems);
@@ -1339,10 +1366,10 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
         async function saveFileContent() {
             const content = document.getElementById('editor-textarea').value;
             try {
-                const res = await fetch('/api/edit', {
+                const res = await fetch('/api/save?path=' + encodeURIComponent(activeEditingPath), {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                    body: `path=${encodeURIComponent(activeEditingPath)}&content=${encodeURIComponent(content)}`
+                    headers: { 'Content-Type': 'application/octet-stream' },
+                    body: content
                 });
                 if (res.ok) {
                     showToast("File saved successfully!", "success");
@@ -1445,72 +1472,186 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
             };
         }
 
-        // --- File Upload & Drag-and-Drop ---
+        // --- File & Folder Upload & Drag-and-Drop ---
         function handleFileInput(input) {
-            if (input.files.length === 0) return;
-            uploadFileObject(input.files[0]);
+            if (!input.files || input.files.length === 0) return;
+            const entries = Array.from(input.files).map(f => ({ file: f, relPath: f.name }));
+            uploadEntriesArray(entries);
             input.value = '';
         }
 
-        function uploadFileObject(file) {
-            const xhr = new XMLHttpRequest();
-            const formData = new FormData();
-            const destPath = getAbsolutePath(file.name);
-            formData.append("data", file, destPath);
+        function handleFolderInput(input) {
+            if (!input.files || input.files.length === 0) return;
+            const entries = Array.from(input.files).map(f => ({ file: f, relPath: f.webkitRelativePath || f.name }));
+            uploadEntriesArray(entries);
+            input.value = '';
+        }
+
+        async function extractDroppedFiles(dataTransfer) {
+            const fileEntries = [];
+            const items = dataTransfer.items;
+            
+            if (items && items.length > 0) {
+                const queue = [];
+                for (let i = 0; i < items.length; i++) {
+                    const item = items[i];
+                    if (item.kind === 'file') {
+                        if (item.webkitGetAsEntry) {
+                            const entry = item.webkitGetAsEntry();
+                            if (entry) {
+                                queue.push(traverseEntry(entry, ''));
+                            }
+                        } else {
+                            const file = item.getAsFile();
+                            if (file) fileEntries.push({ file: file, relPath: file.name });
+                        }
+                    }
+                }
+                await Promise.all(queue);
+            } else if (dataTransfer.files && dataTransfer.files.length > 0) {
+                for (let i = 0; i < dataTransfer.files.length; i++) {
+                    const file = dataTransfer.files[i];
+                    fileEntries.push({ file: file, relPath: file.webkitRelativePath || file.name });
+                }
+            }
+
+            async function traverseEntry(entry, parentPath) {
+                if (entry.isFile) {
+                    return new Promise((resolve) => {
+                        entry.file((file) => {
+                            const rel = parentPath ? (parentPath + '/' + file.name) : file.name;
+                            fileEntries.push({ file: file, relPath: rel });
+                            resolve();
+                        }, () => resolve());
+                    });
+                } else if (entry.isDirectory) {
+                    const currentDir = parentPath ? (parentPath + '/' + entry.name) : entry.name;
+                    const dirReader = entry.createReader();
+                    const readEntriesBatch = () => {
+                        return new Promise((resolve) => {
+                            dirReader.readEntries(async (entries) => {
+                                if (!entries || entries.length === 0) {
+                                    resolve();
+                                } else {
+                                    const promises = [];
+                                    for (let j = 0; j < entries.length; j++) {
+                                        promises.push(traverseEntry(entries[j], currentDir));
+                                    }
+                                    await Promise.all(promises);
+                                    await readEntriesBatch();
+                                    resolve();
+                                }
+                            }, () => resolve());
+                        });
+                    };
+                    await readEntriesBatch();
+                }
+            }
+
+            return fileEntries;
+        }
+
+        async function uploadEntriesArray(entries) {
+            if (!entries || entries.length === 0) return;
 
             const progressZone = document.getElementById('upload-progress-zone');
             const progressBar = document.getElementById('upload-progress');
-            progressZone.style.display = 'block';
-            progressBar.style.width = '0%';
+            if (progressZone) progressZone.style.display = 'block';
+            if (progressBar) progressBar.style.width = '0%';
 
-            xhr.upload.addEventListener('progress', (e) => {
-                if (e.lengthComputable) {
-                    const pct = (e.loaded / e.total) * 100;
-                    progressBar.style.width = pct + '%';
-                }
-            });
+            let uploadedCount = 0;
+            for (let i = 0; i < entries.length; i++) {
+                const item = entries[i];
+                const file = item.file;
+                const relPath = item.relPath;
+                const destPath = getAbsolutePath(relPath);
 
-            xhr.addEventListener('load', () => {
-                progressZone.style.display = 'none';
-                if (xhr.status === 200) {
-                    showToast(`Uploaded ${file.name}`, "success");
-                    loadDirectory();
-                    fetchStorageTelemetry();
-                } else {
-                    showToast("Upload failed", "error");
-                }
-            });
+                await new Promise((resolve) => {
+                    const xhr = new XMLHttpRequest();
+                    const formData = new FormData();
+                    formData.append("data", file, destPath);
 
-            xhr.addEventListener('error', () => {
-                progressZone.style.display = 'none';
-                showToast("Upload connection error", "error");
-            });
+                    xhr.upload.addEventListener('progress', (e) => {
+                        if (e.lengthComputable && progressBar) {
+                            const totalPct = Math.round(((i + (e.loaded / e.total)) / entries.length) * 100);
+                            progressBar.style.width = totalPct + '%';
+                        }
+                    });
 
-            xhr.open('POST', '/api/upload', true);
-            xhr.send(formData);
+                    xhr.addEventListener('load', () => {
+                        if (xhr.status === 200) {
+                            uploadedCount++;
+                        } else if (xhr.status === 401 || xhr.status === 403) {
+                            window.location.reload();
+                        }
+                        resolve();
+                    });
+
+                    xhr.addEventListener('error', () => {
+                        resolve();
+                    });
+
+                    xhr.open('POST', '/api/upload', true);
+                    xhr.send(formData);
+                });
+            }
+
+            if (progressZone) progressZone.style.display = 'none';
+            if (uploadedCount > 0) {
+                showToast(`Successfully uploaded ${uploadedCount} file(s)`, "success");
+                loadDirectory();
+                fetchStorageTelemetry();
+            } else {
+                showToast("Upload failed", "error");
+            }
+        }
+
+        function uploadFileObject(file) {
+            uploadEntriesArray([{ file: file, relPath: file.name }]);
         }
 
         function initDragAndDrop() {
-            const main = document.getElementById('drop-zone-main');
             const overlay = document.getElementById('drop-overlay');
+            let dragCounter = 0;
 
-            ['dragenter', 'dragover'].forEach(name => {
-                main.addEventListener(name, (e) => {
-                    e.preventDefault();
+            window.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                dragCounter++;
+                if (overlay) overlay.style.display = 'flex';
+            });
+
+            window.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (e.dataTransfer) {
+                    e.dataTransfer.dropEffect = 'copy';
+                }
+                if (overlay && overlay.style.display !== 'flex') {
                     overlay.style.display = 'flex';
-                });
+                }
             });
 
-            ['dragleave', 'drop'].forEach(name => {
-                main.addEventListener(name, (e) => {
-                    e.preventDefault();
-                    overlay.style.display = 'none';
-                });
+            window.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dragCounter--;
+                if (dragCounter <= 0) {
+                    dragCounter = 0;
+                    if (overlay) overlay.style.display = 'none';
+                }
             });
 
-            main.addEventListener('drop', (e) => {
-                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                    uploadFileObject(e.dataTransfer.files[0]);
+            window.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                dragCounter = 0;
+                if (overlay) overlay.style.display = 'none';
+
+                if (e.dataTransfer) {
+                    showToast("Scanning dropped files & folders...", "info");
+                    const entries = await extractDroppedFiles(e.dataTransfer);
+                    if (entries && entries.length > 0) {
+                        uploadEntriesArray(entries);
+                    } else {
+                        showToast("No files found to upload", "warning");
+                    }
                 }
             });
         }

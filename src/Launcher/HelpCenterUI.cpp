@@ -1,5 +1,5 @@
 #include "HelpCenterUI.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
 #include <LittleFS.h>

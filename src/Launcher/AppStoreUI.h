@@ -8,7 +8,9 @@ struct AppStoreItem {
     String id;
     String name;
     String metaUrl;
+    String metaSha256;
     String appUrl;
+    String appSha256;
     String description;
     String author;
     String version;

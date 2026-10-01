@@ -95,6 +95,7 @@
   <li><strong>Rich UI &amp; Double-Buffering:</strong> Built-in graphics library with double-buffering and mini-sprite support for tear-free, flicker-free rendering.</li>
   <li><strong>App Store &amp; Cloud Marketplace:</strong> Browse, download, and install JavaScript apps and games dynamically over Wi-Fi.</li>
   <li><strong>File Management &amp; Multi-Bus SD:</strong> Full-featured file explorer and text editor utilizing LittleFS internal storage and high-speed SD/SD_MMC cards.</li>
+  <li><strong>Hardware-Backed Security Architecture (v2.0.1):</strong> Silicon TRNG AES-256 encrypted credential vaults (`/system/`), strict TLS root CA certificate verification across all cloud/OTA endpoints, scoped JavaScript runtime sandboxing, and authenticated Web Management.</li>
   <li><strong>Comprehensive Hardware APIs:</strong> Direct JavaScript control over GPIO, I2C bus scanning/transfers, high-frequency PWM tone generators, hardware cryptographic hashing/AES, and ADC battery monitoring.</li>
 </ul>
 

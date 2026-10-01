@@ -5,7 +5,7 @@
 #include "Settings/TouchDriver.h"
 #include <SPI.h>
 #include <SD.h>
-#include "File System/FileSystem.h"
+#include "FileSystem/FileSystem.h"
 
 // Global display instance for default board
 TFT_eSPI tft = TFT_eSPI();

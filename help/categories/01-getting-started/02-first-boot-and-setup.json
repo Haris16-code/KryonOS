@@ -1,0 +1,4 @@
+{
+  "title": "First Boot & Setup Guide",
+  "content": "Follow these steps to set up your device on first boot:\n\n1. Insert an SD Card (optional, formatted in FAT32) for user app storage.\n2. Power on the device via USB.\n3. From the Launcher, open Settings -> WiFi Options.\n4. Connect to your 2.4 GHz Wi-Fi network.\n5. Calibrate your touch screen in Settings -> Touch Calibrator if needed."
+}

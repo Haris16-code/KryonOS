@@ -1,6 +1,6 @@
 #include "TouchCalibrator.h"
 #include "TouchDriver.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
 
 extern int currentState;
 

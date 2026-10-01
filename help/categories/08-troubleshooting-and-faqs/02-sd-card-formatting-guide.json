@@ -1,0 +1,4 @@
+{
+  "title": "SD Card Setup & Formatting",
+  "content": "To ensure reliable SD Card operation:\n\n- Format the microSD card as FAT32 (or exFAT where supported).\n- Allocate allocation unit size (cluster size) as 32 KB or 64 KB for optimal SPI read speeds.\n- Insert card before powering on the device to allow automatic mounting at /sd."
+}

@@ -1,0 +1,4 @@
+{
+  "title": "Package SHA-256 Verification",
+  "content": "Every package in the App Store is verified for safety:\n\n- Before installation, the OS computes the SHA-256 cryptographic hash of the downloaded files.\n- It verifies the hash against the catalog signature.\n- If a file is tampered with or the hash is missing, the installation is safely blocked to protect your device."
+}

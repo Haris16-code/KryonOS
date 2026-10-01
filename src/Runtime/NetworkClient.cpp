@@ -1,5 +1,6 @@
 #include "NetworkClient.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
+#include "../Kernel/Services/Network/TLSHelper.h"
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <esp_task_wdt.h>
@@ -17,14 +18,16 @@ HttpResponse NetworkClient::request(const String& method, const String& url, con
     }
 
     HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(timeoutMs);
     http.setReuse(false);
+    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
 
     WiFiClientSecure secureClient;
     WiFiClient plainClient;
 
     if (url.startsWith("https://")) {
-        secureClient.setInsecure();
+        TLSHelper::configureTLS(secureClient, url);
         if (!http.begin(secureClient, url)) {
             response.error = "Failed to initialize HTTPS connection";
             return response;
@@ -80,14 +83,16 @@ bool NetworkClient::downloadFile(const String& url, const String& destPath,
     }
 
     HTTPClient http;
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(timeoutMs);
     http.setReuse(false);
+    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
 
     WiFiClientSecure secureClient;
     WiFiClient plainClient;
 
     if (url.startsWith("https://")) {
-        secureClient.setInsecure();
+        TLSHelper::configureTLS(secureClient, url);
         if (!http.begin(secureClient, url)) return false;
     } else if (url.startsWith("http://")) {
         if (!http.begin(plainClient, url)) return false;

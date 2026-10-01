@@ -1,4 +1,5 @@
 #include "CryptoEngine.h"
+#include "FileSystem/FileSystem.h"
 #include <mbedtls/sha256.h>
 #include <mbedtls/sha512.h>
 #include <mbedtls/md.h>
@@ -7,6 +8,8 @@
 #include <mbedtls/rsa.h>
 #include <mbedtls/base64.h>
 #include <esp_random.h>
+#include <Preferences.h>
+#include <ArduinoJson.h>
 
 bool CryptoEngine::hexToBytes(const String& hex, std::vector<uint8_t>& out) {
     out.clear();
@@ -262,3 +265,88 @@ bool CryptoEngine::rsaVerify(const String& pubKeyPem, const String& message, con
 
     return (ret == 0);
 }
+
+bool CryptoEngine::getDeviceKey(uint8_t keyOut[32]) {
+    Preferences prefs;
+    if (!prefs.begin("kryon_sec", false)) {
+        Serial.println("[Crypto] Error opening NVS kryon_sec namespace");
+        return false;
+    }
+    if (!prefs.isKey("enc_key")) {
+        uint8_t rawKey[32];
+        esp_fill_random(rawKey, sizeof(rawKey));
+        prefs.putBytes("enc_key", rawKey, sizeof(rawKey));
+        Serial.println("[Crypto] Generated new device encryption key via hardware TRNG");
+    }
+    size_t len = prefs.getBytes("enc_key", keyOut, 32);
+    prefs.end();
+    return (len == 32);
+}
+
+String CryptoEngine::deviceEncrypt(const String& plaintext) {
+    if (plaintext.length() == 0) return "";
+    uint8_t key[32];
+    if (!getDeviceKey(key)) return "";
+
+    String keyHex = bytesToHex(key, 32);
+    String ivHex = randomBytes(16); // 16 bytes = 32 hex chars
+
+    String cipherBase64 = aesEncrypt(plaintext, keyHex, ivHex);
+    if (cipherBase64.length() == 0) return "";
+
+    JsonDocument doc;
+    doc["v"] = 1;
+    doc["iv"] = ivHex;
+    doc["data"] = cipherBase64;
+
+    String output;
+    serializeJson(doc, output);
+    return output;
+}
+
+String CryptoEngine::deviceDecrypt(const String& ciphertext) {
+    if (ciphertext.length() == 0) return "";
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, ciphertext);
+    if (err) {
+        Serial.printf("[Crypto] JSON parse error in deviceDecrypt: %s\n", err.c_str());
+        return "";
+    }
+
+    const char* ivHex = doc["iv"];
+    const char* dataBase64 = doc["data"];
+    if (!ivHex || !dataBase64) return "";
+
+    uint8_t key[32];
+    if (!getDeviceKey(key)) return "";
+
+    String keyHex = bytesToHex(key, 32);
+    return aesDecrypt(String(dataBase64), keyHex, String(ivHex));
+}
+
+String CryptoEngine::sha256File(const char* path) {
+    File f = FileSystem::openFile(path, "r");
+    if (!f || f.isDirectory()) {
+        return "";
+    }
+
+    mbedtls_sha256_context shaCtx;
+    mbedtls_sha256_init(&shaCtx);
+    mbedtls_sha256_starts(&shaCtx, 0 /* 0 = SHA-256 */);
+
+    uint8_t buffer[512];
+    while (f.available()) {
+        size_t bytesRead = f.read(buffer, sizeof(buffer));
+        if (bytesRead > 0) {
+            mbedtls_sha256_update(&shaCtx, buffer, bytesRead);
+        }
+    }
+    f.close();
+
+    uint8_t hash[32];
+    mbedtls_sha256_finish(&shaCtx, hash);
+    mbedtls_sha256_free(&shaCtx);
+
+    return bytesToHex(hash, 32);
+}
+

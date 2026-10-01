@@ -5,7 +5,7 @@
 #include <SPI.h>
 #include <SD.h>
 #include <XPT2046_Bitbang.h>
-#include "File System/FileSystem.h"
+#include "FileSystem/FileSystem.h"
 
 uint16_t TOUCH_X_MIN_VAL = 355;
 uint16_t TOUCH_X_MAX_VAL = 3800;

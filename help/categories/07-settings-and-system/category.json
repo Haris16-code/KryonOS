@@ -1,0 +1,21 @@
+{
+  "category": "Settings and System",
+  "articles": [
+    {
+      "title": "Touch Screen Calibration",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/07-settings-and-system/01-touch-screen-calibration.json"
+    },
+    {
+      "title": "Time Zones & Clock Sync",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/07-settings-and-system/02-timezones-and-sntp-sync.json"
+    },
+    {
+      "title": "Over-The-Air (OTA) Updates",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/07-settings-and-system/03-over-the-air-ota-updates.json"
+    },
+    {
+      "title": "Privacy & Telemetry",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/07-settings-and-system/04-telemetry-and-stars-cache.json"
+    }
+  ]
+}

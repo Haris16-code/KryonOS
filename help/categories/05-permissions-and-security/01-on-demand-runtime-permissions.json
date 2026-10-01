@@ -1,0 +1,4 @@
+{
+  "title": "On-Demand Storage Security",
+  "content": "KryonOS enforces runtime storage permissions with zero friction:\n\n- Apps do not need pre-declared permissions in app.json.\n- Within its own folder, an app can read and write freely without prompts.\n- If an app attempts to access external files outside its folder, KryonOS presents an interactive security dialog: [ Allow Once ], [ Always Allow ], or [ Deny ]."
+}

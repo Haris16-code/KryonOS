@@ -1,0 +1,4 @@
+{
+  "title": "Over-The-Air (OTA) Updates",
+  "content": "Keep your system up to date effortlessly:\n\n1. Connect device to Wi-Fi.\n2. Open Settings -> System Updates.\n3. The system checks GitHub releases for newer KryonOS firmware.\n4. If an update is available, tap [ Update Now ] to flash over-the-air with built-in rollback protection."
+}

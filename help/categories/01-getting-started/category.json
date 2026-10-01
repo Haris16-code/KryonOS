@@ -1,0 +1,21 @@
+{
+  "category": "Getting Started",
+  "articles": [
+    {
+      "title": "What is KryonOS?",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/01-getting-started/01-what-is-kryonos.json"
+    },
+    {
+      "title": "First Boot & Setup Guide",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/01-getting-started/02-first-boot-and-setup.json"
+    },
+    {
+      "title": "Navigation & Screen Controls",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/01-getting-started/03-navigation-and-controls.json"
+    },
+    {
+      "title": "System Apps vs User Apps",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/01-getting-started/04-system-vs-user-apps.json"
+    }
+  ]
+}

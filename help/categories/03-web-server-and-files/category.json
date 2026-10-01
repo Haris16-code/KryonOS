@@ -1,0 +1,21 @@
+{
+  "category": "Web Server and Files",
+  "articles": [
+    {
+      "title": "Accessing Web Server",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/03-web-server-and-files/01-accessing-web-server.json"
+    },
+    {
+      "title": "Finding Web Credentials",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/03-web-server-and-files/02-finding-web-credentials.json"
+    },
+    {
+      "title": "Session Security & Remember Me",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/03-web-server-and-files/03-session-security-and-remember-me.json"
+    },
+    {
+      "title": "Drag & Drop Folder Uploads",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/03-web-server-and-files/04-drag-and-drop-folder-uploads.json"
+    }
+  ]
+}

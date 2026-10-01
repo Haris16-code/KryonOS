@@ -1,0 +1,17 @@
+{
+  "category": "Troubleshooting and FAQs",
+  "articles": [
+    {
+      "title": "RAM Optimization & Memory",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/08-troubleshooting-and-faqs/01-ram-optimization-and-wifi.json"
+    },
+    {
+      "title": "SD Card Setup & Formatting",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/08-troubleshooting-and-faqs/02-sd-card-formatting-guide.json"
+    },
+    {
+      "title": "Factory Reset & Recovery",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/08-troubleshooting-and-faqs/03-factory-reset-and-recovery.json"
+    }
+  ]
+}

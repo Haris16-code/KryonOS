@@ -48,6 +48,10 @@ public:
     static size_t getUsedSpace(const char* drive);
     static size_t getFreeSpace(const char* drive);
     
+    // Security & Protected Paths
+    static bool isSystemPath(const char* path);
+    static void migrateSystemFiles();
+    
     // Cryptography
     static String getFileMD5(const char* path);
     

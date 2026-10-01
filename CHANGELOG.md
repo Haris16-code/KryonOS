@@ -15,6 +15,75 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 ---
 
+## [2.0.1] - 2026-10-01
+
+### Added
+- **Dynamic TLS Build Epoch Time Sync**:
+  - Implemented compile-time build epoch baseline (`getBuildEpoch()` from `__DATE__`/`__TIME__`) setting the system clock on boot if uninitialized, safely satisfying `notBefore` certificate validation.
+  - Added non-blocking SNTP synchronization (`configTime()`) in background upon Wi-Fi connection.
+- **Settings Permissions Manager**:
+  - Added dedicated **Permissions Manager** in Settings with paginated app list, permission status badges, individual **`[ Revoke ]`** buttons, and global **`[ Reset All ]`** confirmation dialog.
+- **On-Demand Runtime Storage Permissions & Cross-Storage Sandboxing**:
+  - Replaced pre-install permission barriers with just-in-time on-demand runtime security: Apps install directly with zero friction.
+  - Symmetrical bidirectional sandboxing: Apps running from LittleFS (`/local`) accessing SD (`/sd`) or external paths, and apps running from SD (`/sd`) accessing LittleFS (`/local`) or external paths trigger the native interactive modal (`Allow Once`, `Always Allow`, or `Deny`).
+  - Access to internal files within the app's own directory is always granted without prompts.
+- **Compact Settings UI Layout**:
+  - Reorganized Settings Menu with 7 crisp `200x30` px buttons (`WiFi Options`, `Touch Calibrator`, `Manage Apps`, `Permissions Manager`, `Time & Region`, `About Device`, `System Updates`).
+- **Web Manager Session Security, Cookie Auth & Rate Limiting**:
+  - Replaced basic auth prompts with a modern glassmorphic web login interface, session token management (epoch time expiry), and `SameSite=Strict` HTTP cookie authentication.
+  - Added persistent **"Remember Me"** login toggle extending session validity (10-year cookie expiration) until the user explicitly logs out.
+  - Brute-force rate limiting: 30-second lockout after 5 consecutive failed login attempts.
+  - Dedicated `/api/login` and `/api/logout` endpoints.
+- **Recursive Folder & Drag-and-Drop Uploads**:
+  - Added full drag-and-drop file and folder upload engine with client-side recursive directory extraction (`webkitGetAsEntry` / `FileSystemDirectoryReader`) and seamless parent folder creation (`ensureParentDirectories()`).
+  - Added dedicated `Upload Folder` button with `webkitdirectory` support.
+- **Comprehensive Online Help Center & Automated Workflow**:
+  - Structured 8 detailed categories covering Setup, Wi-Fi, Web Server, App Store, Permissions, KryonCloud & AI, Settings, and FAQs.
+- **On-Device Web Server Customization**:
+  - Added `[ Set User ]` and `[ Set Pass ]` on-device keyboard controls in `WebServerAppUI` allowing users to change web credentials on the go.
+  - Renamed UI to "Web Server".
+- **Hardware-Protected WiFi Credential Storage (AES-256-CBC)**:
+  - Network credentials are now encrypted on flash at `/local/system/wifi_credentials.enc` using hardware AES-256-CBC with PKCS#7 padding.
+  - Unique per-device key generated using ESP32 Hardware True Random Number Generator (`esp_fill_random`) on initial boot and isolated in dedicated NVS partition (`kryon_sec`).
+  - Seamless automatic boot migration: Legacy cleartext `known_networks.json` and `wifi.txt` files are decrypted/parsed, saved to encrypted storage, and securely purged from filesystem.
+  - Encrypted cloud backup integration: Device backups seamlessly bundle and restore the encrypted credential vault.
+- **TLS Certificate Validation & Mozilla CA Trust Bundle**:
+  - Implemented centralized `TLSHelper` and `TLSCerts` trust store (`ISRG Root X1`, `DigiCert Global Root G2`, `Amazon Root CA 1`, and ESP-IDF Mozilla CA bundle fallback).
+  - Complete elimination of all 25 `setInsecure()` / `setTrustAnchors()` bypasses across the entire operating system codebase.
+- **Web Manager HTTP Basic Authentication & Protected Path Guard**:
+  - Authentication enforced across all Web Manager `/api/*` endpoints and web editor root (`/`).
+  - Web Manager credentials persisted in isolated NVS (`kryon_web`) and viewable directly on the device screen when Web Server is active.
+  - System path guard strictly blocking traversal (`..`, `\`) or access to `/system/`, `/local/system/`, `/sd/system/`, and internal security vaults via Web Manager.
+  - Direct raw streaming `POST /api/save` endpoint preventing heap exhaustion / OOM when saving large files.
+- **Cryptographic App Store Package Integrity Verification**:
+  - App Store downloads now verify package integrity via SHA-256 streaming hash comparison before installing app code or metadata.
+- **Scoped JavaScript Filesystem Sandboxing**:
+  - JavaScript applications are restricted strictly to their package folder (`/local/apps/<pkg>/` or `/sd/apps/<pkg>/`) or explicitly configured data directory.
+  - Hard sandbox with immediate rejection for path traversal (`..`, `\`), absolute escapes, or out-of-sandbox filesystem operations, preventing FreeRTOS watchdog freezes.
+- **Privacy & Telemetry Hardening**:
+  - Eliminated automatic boot and settings-open HTTP pings to GitHub API (`stargazers/count`).
+  - Star count telemetry is strictly opt-in and cached locally under `/local/system/stars_cache.json`.
+
+### Changed
+- **Web Manager CORS Policy**: Removed wildcard `Access-Control-Allow-Origin: *` header to prevent Cross-Origin LAN exploitation.
+- **File System Architecture**: Created reserved `/system` folder on LittleFS and SD partitions for OS-internal configuration and security vaults with system-level path protection.
+- **App Store Status & Security Feedback**:
+  - "Check for Updates" screen now displays `No Update found.` when all installed applications are on their latest version.
+  - Package integrity verification now displays `Installation Blocked: Hash Not Found in store.` when a repository catalog entry is missing a SHA-256 hash.
+
+### Fixed
+- **JavaScript Engine RAM & Display Buffer Deallocation**:
+  - Fixed heap retention and frame buffer memory leak on JavaScript app termination by explicitly deleting `tftSprite` and `sprite3D` buffers in `JSBindings::cleanup()`, immediately freeing up to 153.6 KB of RAM and resetting all display caches.
+- **CVE Fixes / Security Vulnerability Resolution**:
+  - Fixed plain-text credential disclosure via Web Manager download endpoint.
+  - Fixed remote unauthenticated code execution and storage deletion via Web Manager.
+  - Fixed TLS MITM vulnerability across KryonCloud, KryonAI, OTA Manager, and Network clients.
+  - Fixed untrusted package execution in App Store by enforcing SHA-256 verification.
+  - Fixed arbitrary filesystem read/write vulnerability in JavaScript Duktape runtime via hard sandboxing.
+  - Fixed Web Manager file descriptor leak on client disconnections during streaming uploads.
+
+---
+
 ## [2.0.0] - 2026-09-27
 
 ### Added

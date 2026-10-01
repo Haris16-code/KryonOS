@@ -1,0 +1,4 @@
+{
+  "title": "Network Troubleshooting",
+  "content": "If you experience connection problems:\n\n- Ensure your router supports 2.4 GHz (ESP32 does not support 5 GHz networks).\n- Check that the password was typed correctly.\n- Move closer to the Wi-Fi router to ensure signal strength.\n- In Settings -> WiFi Options, you can delete and re-add a network profile anytime."
+}

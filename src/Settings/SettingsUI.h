@@ -22,6 +22,9 @@ public:
     static void drawApps();
     static void handleAppsTouch(uint16_t x, uint16_t y);
 
+    static void drawPermissions();
+    static void handlePermissionsTouch(uint16_t x, uint16_t y);
+
     static void drawTimeSettings();
     static void handleTimeTouch(uint16_t x, uint16_t y);
 

@@ -1,0 +1,4 @@
+{
+  "title": "What is KryonOS?",
+  "content": "KryonOS is a fast, lightweight gui embedded operating system created specifically for ESP32 microcontrollers.\n\nKey Highlights:\n- Modern GUI rendering with touch controls.\n- JavaScript runtime powered by Duktape.\n- Native C++ system services for maximum speed.\n- Onboard App Store for direct package downloads.\n- Integrated Web Server and remote File Manager.\n- Hardware-grade AES-256 encrypted security."
+}

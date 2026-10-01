@@ -2,7 +2,7 @@
 #include <SPI.h>
 #include <TFT_eSPI.h>
 #include <WiFi.h>
-#include "File System/FileSystem.h"
+#include "FileSystem/FileSystem.h"
 #include "Launcher/LauncherUI.h"
 #include "Settings/SettingsUI.h"
 #include "Launcher/InstallerUI.h"
@@ -41,6 +41,7 @@
 #define STATE_HELP_CENTER 14
 #define STATE_SETTINGS_WIFI_SAVED 15
 #define STATE_KRYON_CLOUD 16
+#define STATE_SETTINGS_PERMISSIONS 17
 
 int currentState = STATE_LAUNCHER;
 
@@ -180,6 +181,7 @@ void loop() {
         else if (currentState == STATE_SETTINGS_WIFI) SettingsUI::drawWiFi();
         else if (currentState == STATE_SETTINGS_WIFI_SAVED) SettingsUI::drawSavedNetworks();
         else if (currentState == STATE_SETTINGS_APPS) SettingsUI::drawApps();
+        else if (currentState == STATE_SETTINGS_PERMISSIONS) SettingsUI::drawPermissions();
         else if (currentState == STATE_SETTINGS_TIME) SettingsUI::drawTimeSettings();
         else if (currentState == STATE_SETTINGS_TIME_MANUAL) SettingsUI::drawTimeManual();
         else if (currentState == STATE_UPDATER_BOOT) SettingsUI::drawUpdater(true);
@@ -250,6 +252,8 @@ void loop() {
                 SettingsUI::handleSavedNetworksTouch(x, y);
             } else if (currentState == STATE_SETTINGS_APPS) {
                 SettingsUI::handleAppsTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_PERMISSIONS) {
+                SettingsUI::handlePermissionsTouch(x, y);
             } else if (currentState == STATE_SETTINGS_TIME) {
                 SettingsUI::handleTimeTouch(x, y);
             } else if (currentState == STATE_SETTINGS_TIME_MANUAL) {

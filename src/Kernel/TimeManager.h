@@ -20,6 +20,8 @@ public:
     static int getMonth();
     static int getDay();
     static int getSeconds();
+    static bool isTimeSynced();
+    static time_t getBuildEpoch();
     
     // Preferences state
     static String currentTimezone;

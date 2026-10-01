@@ -1,0 +1,17 @@
+{
+  "category": "Permissions and Security",
+  "articles": [
+    {
+      "title": "On-Demand Storage Security",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/05-permissions-and-security/01-on-demand-runtime-permissions.json"
+    },
+    {
+      "title": "Cross-Storage Sandboxing",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/05-permissions-and-security/02-cross-storage-sandboxing.json"
+    },
+    {
+      "title": "Permissions Manager",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/05-permissions-and-security/03-permissions-manager-in-settings.json"
+    }
+  ]
+}

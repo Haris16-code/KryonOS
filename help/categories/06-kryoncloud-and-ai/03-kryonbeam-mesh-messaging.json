@@ -1,0 +1,4 @@
+{
+  "title": "KryonBeam Messaging",
+  "content": "KryonBeam enables hardware-to-hardware messaging:\n\n- Open KryonCloud -> KryonBeam tab.\n- Send direct messages to other devices using their unique handle (e.g. @node1) or broadcast to the public channel (*).\n- Read incoming messages, view threads, and clear message queues with simple touch controls."
+}

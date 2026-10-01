@@ -1,0 +1,4 @@
+{
+  "title": "Pairing KryonCloud Account",
+  "content": "To pair your device with KryonCloud services:\n\n1. Open KryonCloud from the Launcher.\n2. In the Overview tab, locate your device hardware ID.\n3. Log into your dashboard at https://kryonos.harislab.tech to link your device.\n4. Once paired, your device handle (@handle) and quotas will synchronize automatically."
+}

@@ -1,7 +1,8 @@
 #include "InstallerUI.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
 #include "../Kernel/Core/HarixKernel.h"
 #include "LauncherUI.h"
+#include <ArduinoJson.h>
 
 // External state variable
 extern int currentState;
@@ -18,7 +19,7 @@ bool InstallerUI::showActionDialog = false;
 String InstallerUI::displayNames[200];
 bool InstallerUI::isAppPackage[200];
 
-static int installState = 0; // 0=None, 1=OverwritePrompt, 2=Result, 3=AppInfo, 4=Installing
+static int installState = 0; // 0=None, 1=OverwritePrompt, 2=Result, 3=AppInfo, 4=Installing, 5=PermissionReview
 static bool installResultOk = false;
 static bool installSyntaxError = false;
 static bool installApiError = false;
@@ -26,6 +27,23 @@ static bool installNoMetadata = false;
 String syntaxErrorMessage = "";
 static AppMetadata currentAppMeta;
 static bool isUpdatingApp = false;
+
+static void saveAppPermissions(const String& pkg, const std::vector<String>& perms) {
+    if (pkg.length() == 0 || perms.empty()) return;
+    String path = "/local/system/app_permissions.json";
+    JsonDocument doc;
+    if (FileSystem::exists(path.c_str())) {
+        String existing = FileSystem::readTextFile(path.c_str());
+        deserializeJson(doc, existing);
+    }
+    JsonArray arr = doc[pkg].to<JsonArray>();
+    for (const auto& p : perms) {
+        arr.add(p);
+    }
+    String out;
+    serializeJson(doc, out);
+    FileSystem::writeTextFile(path.c_str(), out.c_str());
+}
 
 // Static pointer for progress callback
 static TFT_eSPI* progressTft = nullptr;
@@ -90,19 +108,40 @@ AppMetadata InstallerUI::parseAppJson(const String& folderPath) {
         return meta;
     }
     
-    meta.name = FileSystem::parseJsonValue(content, "name");
-    meta.packageName = FileSystem::parseJsonValue(content, "packageName");
-    meta.version = FileSystem::parseJsonValue(content, "version");
-    meta.author = FileSystem::parseJsonValue(content, "author");
-    meta.type = FileSystem::parseJsonValue(content, "type");
-    meta.category = FileSystem::parseJsonValue(content, "category");
-    meta.description = FileSystem::parseJsonValue(content, "description");
-    meta.changelog = FileSystem::parseJsonValue(content, "changelog");
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, content);
+    if (!err) {
+        meta.name = doc["name"] | "";
+        meta.packageName = doc["packageName"] | (doc["package"] | "");
+        meta.version = doc["version"] | "1.0.0";
+        meta.author = doc["author"] | "Unknown";
+        meta.type = doc["type"] | "App";
+        meta.category = doc["category"] | "Utility";
+        meta.description = doc["description"] | "";
+        meta.changelog = doc["changelog"] | "";
+        meta.api = doc["api"] | 1;
+
+        JsonArray perms = doc["permissions"].as<JsonArray>();
+        if (!perms.isNull()) {
+            for (JsonVariant p : perms) {
+                String pStr = p.as<String>();
+                if (pStr.length() > 0) {
+                    meta.permissions.push_back(pStr);
+                }
+            }
+        }
+    } else {
+        meta.name = FileSystem::parseJsonValue(content, "name");
+        meta.packageName = FileSystem::parseJsonValue(content, "packageName");
+        meta.version = FileSystem::parseJsonValue(content, "version");
+        meta.author = FileSystem::parseJsonValue(content, "author");
+        meta.type = FileSystem::parseJsonValue(content, "type");
+        meta.category = FileSystem::parseJsonValue(content, "category");
+        meta.description = FileSystem::parseJsonValue(content, "description");
+        meta.changelog = FileSystem::parseJsonValue(content, "changelog");
+        meta.api = FileSystem::parseJsonValue(content, "api").toInt();
+    }
     
-    String apiStr = FileSystem::parseJsonValue(content, "api");
-    meta.api = apiStr.toInt();
-    
-    // Valid if we at least got a name
     if (meta.name.length() > 0) {
         meta.valid = true;
     }
@@ -509,6 +548,42 @@ void InstallerUI::drawActionDialog() {
         tftInstance->setTextColor(TFT_WHITE, TFT_RED);
         tftInstance->drawString("Cancel", 175, 245, 2);
         return;
+    } else if (installState == 5) { // Permission Review Dialog (Native C++)
+        tftInstance->fillRoundRect(10, 30, 220, 240, 8, TFT_DARKGREY);
+        tftInstance->setTextColor(TFT_GOLD, TFT_DARKGREY);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("App Permissions", 120, 50, 4);
+
+        tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
+        tftInstance->setTextDatum(TL_DATUM);
+        int y = 78;
+        tftInstance->drawString("Requires access to:", 20, y, 2); y += 18;
+
+        for (size_t i = 0; i < currentAppMeta.permissions.size() && i < 5; i++) {
+            String p = currentAppMeta.permissions[i];
+            String desc = "• " + p;
+            if (p == "network") desc = "• Network & Cloud APIs";
+            else if (p == "storage") desc = "• Local Sandbox Storage";
+            else if (p == "gpio") desc = "• Hardware GPIO Pins";
+            else if (p == "i2c") desc = "• Hardware I2C Master";
+            else if (p == "pwm") desc = "• Hardware PWM & Audio";
+            else if (p == "ai") desc = "• KryonAI Engine";
+
+            tftInstance->setTextColor(TFT_CYAN, TFT_DARKGREY);
+            tftInstance->drawString(desc, 22, y, 2);
+            y += 18;
+        }
+
+        // Grant & Install / Deny buttons
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->fillRoundRect(20, 230, 95, 30, 4, TFT_GREEN);
+        tftInstance->setTextColor(TFT_BLACK, TFT_GREEN);
+        tftInstance->drawString("Grant", 67, 245, 2);
+
+        tftInstance->fillRoundRect(125, 230, 95, 30, 4, TFT_RED);
+        tftInstance->setTextColor(TFT_WHITE, TFT_RED);
+        tftInstance->drawString("Deny", 172, 245, 2);
+        return;
     }
 
     // Default Action Dialog (for regular files - non-app folders)
@@ -726,7 +801,6 @@ void InstallerUI::handleTouch(uint16_t x, uint16_t y) {
         } else if (installState == 3) { // App Info dialog
             if (y >= 230 && y <= 260) {
                 if (x >= 25 && x <= 105) { // Install clicked
-                    // Check if app already exists
                     bool defaultSD = FileSystem::exists("/local/config_install_sd.txt");
                     if (defaultSD && !FileSystem::exists("/sd/")) defaultSD = false;
                     String destBase = defaultSD ? "/sd/apps/" : "/local/apps/";
@@ -753,6 +827,43 @@ void InstallerUI::handleTouch(uint16_t x, uint16_t y) {
                         FileSystem::rmdir(selectedFile.c_str());
                         extern int currentState;
                         currentState = 13; // Return to App Store instead of staying in Installer
+                    } else {
+                        drawFileList();
+                    }
+                }
+            }
+            return;
+        } else if (installState == 5) { // Permission Review Dialog Touches
+            if (y >= 230 && y <= 260) {
+                if (x >= 20 && x <= 115) { // Grant clicked
+                    saveAppPermissions(currentAppMeta.packageName, currentAppMeta.permissions);
+
+                    bool defaultSD = FileSystem::exists("/local/config_install_sd.txt");
+                    if (defaultSD && !FileSystem::exists("/sd/")) defaultSD = false;
+                    String destBase = defaultSD ? "/sd/apps/" : "/local/apps/";
+                    String destFolder = destBase + currentAppMeta.packageName + "/";
+                    
+                    if (isUpdatingApp) {
+                        installSyntaxError = false;
+                        installApiError = false;
+                        installNoMetadata = false;
+                        performInstall(currentAppMeta.folderPath, currentAppMeta.packageName, true);
+                    } else if (FileSystem::exists(destFolder.c_str())) {
+                        installState = 1; // Ask overwrite
+                        drawActionDialog();
+                    } else {
+                        performInstall(currentAppMeta.folderPath, currentAppMeta.packageName, false);
+                    }
+                } else if (x >= 125 && x <= 220) { // Deny clicked
+                    installState = 0;
+                    showActionDialog = false;
+                    tftInstance->fillScreen(TFT_BLACK);
+                    if (selectedFile.indexOf("tmp_download") != -1) {
+                        FileSystem::deleteFile((selectedFile + "app.json").c_str());
+                        FileSystem::deleteFile((selectedFile + "main.js").c_str());
+                        FileSystem::rmdir(selectedFile.c_str());
+                        extern int currentState;
+                        currentState = 13;
                     } else {
                         drawFileList();
                     }

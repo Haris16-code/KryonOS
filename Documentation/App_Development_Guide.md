@@ -52,13 +52,17 @@ All standard identity and configuration fields are **COMPULSORY**:
 - **`metaUrl`**: (Optional for local, required for App Store) The raw URL to the `app.json` on the internet for auto-updates.
 - **`changelog`**: A brief string detailing what changed on update.
 
-#### Optional Fields (The only 2 optional keys):
+#### Optional Fields:
 - **`fileAssociations`** *(Array of Strings, Optional, Default: `[]`)*:
   Tells the OS which file extensions this app can open (e.g., `[".bmp", ".png", ".jpg"]` or `[".txt", ".log", ".json"]`). When another app calls `System.ipc.openFile(path)`, the OS inspects this registry to automatically launch your app with the target file path.
 - **`allowCompanionLaunch`** *(Boolean, Optional, Default: `true`)*:
   Specifies whether other third-party apps are permitted to launch your app via `System.ipc.launch()`.
   - If **omitted**, it automatically **defaults to `true`**.
   - If explicitly set to **`false`**, external companion launch requests will be restricted by the OS.
+
+> [!NOTE]
+> **On-Demand Storage Permissions (No `permissions` field needed in `app.json`)**:
+> KryonOS applications execute inside an isolated sandbox directory (their own package folder on LittleFS or SD Card) with unrestricted access to their own files. Standard hardware and network APIs require no permissions. If an app attempts to access external storage outside its folder (e.g., cross-storage LittleFS &harr; SD Card or shared paths), KryonOS automatically pauses and displays a native on-demand prompt (`Allow Once`, `Always Allow`, or `Deny`). Granted permissions can be reviewed and revoked anytime in **Settings &rarr; Permissions Manager**.
 
 ## 3. The `main.js` File (App Logic)
 

@@ -1,0 +1,21 @@
+{
+  "category": "App Store and Apps",
+  "articles": [
+    {
+      "title": "Browsing & Installing Apps",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/04-app-store-and-apps/01-browsing-and-installing.json"
+    },
+    {
+      "title": "Package SHA-256 Verification",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/04-app-store-and-apps/02-sha256-integrity-verification.json"
+    },
+    {
+      "title": "Checking For App Updates",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/04-app-store-and-apps/03-checking-for-updates.json"
+    },
+    {
+      "title": "Managing & Deleting Apps",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/04-app-store-and-apps/04-managing-and-deleting-apps.json"
+    }
+  ]
+}

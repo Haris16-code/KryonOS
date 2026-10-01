@@ -1,6 +1,8 @@
 #include "KryonCloudManager.h"
 #include "../../WiFiManager.h"
-#include "../../../File System/FileSystem.h"
+#include "../../../FileSystem/FileSystem.h"
+#include "../Network/TLSHelper.h"
+#include "../../../Hal/Crypto/CryptoEngine.h"
 #include <esp_random.h>
 #include "mbedtls/sha256.h"
 
@@ -138,85 +140,16 @@ void KryonCloudManager::unpair() {
 }
 
 // ============================================================================
-// ZERO-AUTH HARDWARE TELEMETRY HEARTBEAT PING
+// HARDWARE TELEMETRY & HEARTBEAT (PAIRED ONLY - NO ZERO-AUTH BEACONS)
 // ============================================================================
 bool KryonCloudManager::sendTelemetryPing() {
-    if (!isConnected()) return false;
-
-    // Strict Rule: If an account is registered/paired to the device, NEVER ping through
-    // the no-auth telemetry API. Route strictly to the authorized sync API.
-    if (isPaired()) {
-        Serial.println("[KryonCloud] Paired device detected: Routing to Authorized Sync API (/api/devices/sync)...");
-        return syncHeartbeat();
-    }
-
-    // Optional boot jitter: only apply once on initial boot ping
-    if (!bootPingSent) {
-        uint32_t jitterMs = esp_random() % 3000;
-        vTaskDelay(pdMS_TO_TICKS(jitterMs));
-        bootPingSent = true;
-    }
-
-    WiFiClientSecure client;
-    client.setInsecure(); // Cloud TLS termination
-
-    HTTPClient http;
-    String url = String(BASE_URL) + "/api/devices/telemetry";
-    http.begin(client, url);
-    http.addHeader("Content-Type", "application/json");
-    http.setTimeout(8000);
-
-    String formattedVer = String(KRYONOS_VERSION);
-    if (!formattedVer.startsWith("v") && !formattedVer.startsWith("V")) {
-        formattedVer = "v" + formattedVer;
-    }
-
-    JsonDocument doc;
-    doc["deviceUid"] = WiFi.macAddress();
-    doc["osVersion"] = formattedVer;
-    doc["firmwareVersion"] = formattedVer;
-    doc["chipModel"] = ESP.getChipModel();
-    doc["hardwareModel"] = "KryonOS-ESP32";
-    doc["freeHeapBytes"] = ESP.getFreeHeap();
-    doc["totalHeapBytes"] = ESP.getHeapSize();
-    doc["wifiRssi"] = WiFi.RSSI();
-    doc["uptimeSeconds"] = millis() / 1000;
-
-    String requestBody;
-    serializeJson(doc, requestBody);
-
-    vTaskDelay(pdMS_TO_TICKS(1)); // Yield to TWDT before HTTP POST
-    int httpCode = http.POST(requestBody);
-    bool success = (httpCode == 200);
-
-    if (success) {
-        lastTelemetryPingTime = millis();
-        Serial.println("[KryonCloud] Telemetry Heartbeat sent successfully.");
-    } else {
-        Serial.printf("[KryonCloud] Telemetry ping returned HTTP %d\n", httpCode);
-    }
-
-    http.end();
-    return success;
+    if (!isConnected() || !isPaired()) return false;
+    return syncHeartbeat();
 }
 
 bool KryonCloudManager::sendBootTelemetry() {
-    if (!isConnected()) return false;
-
-    // Apply 0-3s random jitter on initial boot ping to prevent server spikes
-    if (!bootPingSent) {
-        uint32_t jitterMs = esp_random() % 3000;
-        vTaskDelay(pdMS_TO_TICKS(jitterMs));
-        bootPingSent = true;
-    }
-
-    if (isPaired()) {
-        Serial.println("[KryonCloud] Startup: Paired device detected -> Pinging Authorized Sync API (/api/devices/sync)...");
-        return syncHeartbeat();
-    } else {
-        Serial.println("[KryonCloud] Startup: Unpaired device detected -> Pinging Zero-Auth Telemetry API (/api/devices/telemetry)...");
-        return sendTelemetryPing();
-    }
+    if (!isConnected() || !isPaired()) return false;
+    return syncHeartbeat();
 }
 
 bool KryonCloudManager::syncAllFreshData() {
@@ -238,11 +171,11 @@ bool KryonCloudManager::initPairingSession(String& outPairingCode, String& outPa
                                           String& outChallenge, int& outExpiresIn) {
     if (!isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/devices/pair/init";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/devices/pair/init";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(10000);
@@ -260,7 +193,6 @@ bool KryonCloudManager::initPairingSession(String& outPairingCode, String& outPa
     specs["flashMb"] = (ESP.getFlashChipSize() / (1024 * 1024));
     specs["firmwareVersion"] = formattedVer;
     specs["osVersion"] = formattedVer;
-    specs["macAddress"] = WiFi.macAddress();
     specs["deviceName"] = "KryonOS ESP32";
 
     String requestBody;
@@ -292,11 +224,11 @@ bool KryonCloudManager::initPairingSession(String& outPairingCode, String& outPa
 bool KryonCloudManager::pollPairingWait(const String& pairingCode, unsigned long timeoutMs) {
     if (!isConnected() || pairingCode.length() == 0) return false;
 
+    String url = String(BASE_URL) + "/api/devices/pair/wait?code=" + pairingCode;
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/devices/pair/wait?code=" + pairingCode;
     http.begin(client, url);
     http.addHeader("Accept", "application/json");
     http.setTimeout(timeoutMs);
@@ -342,11 +274,11 @@ bool KryonCloudManager::pollPairingWait(const String& pairingCode, unsigned long
 bool KryonCloudManager::syncHeartbeat() {
     if (!isPaired() || !isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/devices/sync";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/devices/sync";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -358,7 +290,6 @@ bool KryonCloudManager::syncHeartbeat() {
     }
 
     JsonDocument doc;
-    doc["ipAddress"] = WiFi.localIP().toString();
     doc["freeHeapBytes"] = ESP.getFreeHeap();
     doc["ramTotalKb"] = ESP.getHeapSize() / 1024;
     doc["firmwareVersion"] = formattedVer;
@@ -413,11 +344,11 @@ bool KryonCloudManager::syncHeartbeat() {
 bool KryonCloudManager::fetchAccountLimits() {
     if (!isPaired() || !isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/account/limits";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/account/limits";
     http.begin(client, url);
     http.addHeader("X-Device-Credential", cachedToken);
     http.addHeader("Authorization", "Bearer " + cachedToken);
@@ -482,11 +413,11 @@ bool KryonCloudManager::fetchStorageManifest(std::vector<CloudFileItem>& sharedF
     sharedFiles.clear();
     deviceFiles.clear();
 
+    String url = String(BASE_URL) + "/api/services/storage/manifest";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/storage/manifest";
     http.begin(client, url);
     http.addHeader("X-Device-Credential", cachedToken);
     http.setTimeout(10000);
@@ -543,16 +474,16 @@ bool KryonCloudManager::fetchStorageManifest(std::vector<CloudFileItem>& sharedF
 bool KryonCloudManager::downloadCloudFile(const String& remotePath, const String& localPath, const String& scope) {
     if (!isPaired() || !isConnected()) return false;
 
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient http;
     String cleanSubpath = remotePath;
     if (cleanSubpath.startsWith("/")) cleanSubpath = cleanSubpath.substring(1);
     if (cleanSubpath.startsWith("shared/")) cleanSubpath = cleanSubpath.substring(7);
     if (cleanSubpath.startsWith("device/")) cleanSubpath = cleanSubpath.substring(7);
 
     String url = String(BASE_URL) + "/api/services/storage/" + scope + "/" + cleanSubpath;
+    WiFiClientSecure client;
+    TLSHelper::configureTLS(client, url);
+
+    HTTPClient http;
     http.begin(client, url);
     http.addHeader("X-Device-Credential", cachedToken);
     
@@ -642,11 +573,11 @@ bool KryonCloudManager::uploadCloudFile(const String& localPath, const String& r
         return false;
     }
 
+    String url = String(BASE_URL) + "/api/services/storage/upload";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/storage/upload";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/octet-stream");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -665,14 +596,14 @@ bool KryonCloudManager::uploadCloudFile(const String& localPath, const String& r
 bool KryonCloudManager::deleteCloudFile(const String& remotePath, const String& scope) {
     if (!isPaired() || !isConnected()) return false;
 
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient http;
     String cleanPath = remotePath;
     if (cleanPath.startsWith("/")) cleanPath = cleanPath.substring(1);
 
     String url = String(BASE_URL) + "/api/services/storage/" + scope + "/" + cleanPath;
+    WiFiClientSecure client;
+    TLSHelper::configureTLS(client, url);
+
+    HTTPClient http;
     http.begin(client, url);
     http.addHeader("X-Device-Credential", cachedToken);
     http.setTimeout(8000);
@@ -687,11 +618,11 @@ bool KryonCloudManager::deleteCloudFile(const String& remotePath, const String& 
 bool KryonCloudManager::createCloudFolder(const String& folderPath, const String& scope) {
     if (!isPaired() || !isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/services/storage/folder";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/storage/folder";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -714,11 +645,11 @@ bool KryonCloudManager::createCloudFolder(const String& folderPath, const String
 bool KryonCloudManager::deleteCloudFolder(const String& folderPath, const String& scope) {
     if (!isPaired() || !isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/services/storage/folder";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/storage/folder";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -739,17 +670,16 @@ bool KryonCloudManager::deleteCloudFolder(const String& folderPath, const String
 }
 
 // ============================================================================
-// ============================================================================
 // KRYONBEAM MESH MESSAGING & PUBLIC CHANNEL
 // ============================================================================
 bool KryonCloudManager::broadcastPublicBeam(const String& content, const String& channel) {
     if (!isPaired() || !isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/services/beam/public";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/beam/public";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -782,14 +712,14 @@ bool KryonCloudManager::pollPublicBeamMessages(std::vector<BeamMessage>& outMess
 
     outMessages.clear();
 
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient http;
     String cleanChan = (channel.startsWith("#") || channel.startsWith("@")) ? channel.substring(1) : channel;
     if (cleanChan.length() == 0) cleanChan = "public";
 
     String url = String(BASE_URL) + "/api/services/beam/public?channel=" + cleanChan + "&limit=" + String(limit) + "&page=" + String(page);
+    WiFiClientSecure client;
+    TLSHelper::configureTLS(client, url);
+
+    HTTPClient http;
     http.begin(client, url);
     if (isPaired()) {
         http.addHeader("X-Device-Credential", cachedToken);
@@ -837,11 +767,11 @@ bool KryonCloudManager::sendBeamMessage(const String& targetHandle, const String
         return broadcastPublicBeam(content, "public");
     }
 
+    String url = String(BASE_URL) + "/api/services/beam/send";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/beam/send";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -875,11 +805,11 @@ bool KryonCloudManager::pollBeamInbox(std::vector<BeamMessage>& outMessages, int
 
     outMessages.clear();
 
+    String url = String(BASE_URL) + "/api/services/beam/inbox";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/beam/inbox";
     http.begin(client, url);
     http.addHeader("X-Device-Credential", cachedToken);
     http.addHeader("X-Poll-Timeout", String(pollTimeoutSec));
@@ -938,11 +868,11 @@ bool KryonCloudManager::pollBeamInbox(std::vector<BeamMessage>& outMessages, int
 bool KryonCloudManager::acknowledgeBeamMessages(const std::vector<String>& ackIds) {
     if (!isPaired() || !isConnected() || ackIds.empty()) return false;
 
+    String url = String(BASE_URL) + "/api/services/beam/inbox";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/services/beam/inbox";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     http.addHeader("X-Device-Credential", cachedToken);
@@ -965,7 +895,7 @@ bool KryonCloudManager::acknowledgeBeamMessages(const std::vector<String>& ackId
 }
 
 // ============================================================================
-// DEVICE CLOUD BACKUP & RESTORE
+// DEVICE CLOUD BACKUP & RESTORE (AES-256 ENCRYPTED)
 // ============================================================================
 bool KryonCloudManager::createDeviceBackup(void (*progressCb)(const String& msg, int pct)) {
     if (!isPaired() || !isConnected()) {
@@ -977,23 +907,20 @@ bool KryonCloudManager::createDeviceBackup(void (*progressCb)(const String& msg,
 
     bool anyBackedUp = false;
 
-    // 1. Check & upload known_networks.json
-    if (FileSystem::exists("/known_networks.json")) {
-        if (progressCb) progressCb("Uploading networks...", 30);
-        bool ok = uploadCloudFile("/known_networks.json", "known_networks.json", "device");
+    // 1. Check & upload encrypted WiFi credentials
+    const char* encWifiPath = "/local/system/wifi_credentials.enc";
+    if (FileSystem::exists(encWifiPath)) {
+        if (progressCb) progressCb("Uploading encrypted credentials...", 30);
+        bool ok = uploadCloudFile(encWifiPath, "wifi_credentials.enc", "device");
         if (ok) {
-            Serial.println("[KryonCloud] Backup: known_networks.json uploaded");
+            Serial.println("[KryonCloud] Backup: wifi_credentials.enc uploaded (AES-256 encrypted)");
             anyBackedUp = true;
         }
-    } else if (FileSystem::exists("known_networks.json")) {
-        if (progressCb) progressCb("Uploading networks...", 30);
-        bool ok = uploadCloudFile("known_networks.json", "known_networks.json", "device");
-        if (ok) anyBackedUp = true;
     }
 
     vTaskDelay(pdMS_TO_TICKS(10));
 
-    // 2. Check & upload touch_cal_p.bin
+    // 2. Check & upload touch calibration
     if (FileSystem::exists("/touch_cal_p.bin")) {
         if (progressCb) progressCb("Uploading touch calibration...", 70);
         bool ok = uploadCloudFile("/touch_cal_p.bin", "touch_cal_p.bin", "device");
@@ -1031,11 +958,11 @@ bool KryonCloudManager::restoreDeviceBackup(void (*progressCb)(const String& msg
     bool anyRestored = false;
 
     for (const auto& f : deviceList) {
-        if (f.filename == "known_networks.json") {
-            if (progressCb) progressCb("Restoring networks...", 45);
-            bool ok = downloadCloudFile(f.path, "/known_networks.json", "device");
+        if (f.filename == "wifi_credentials.enc") {
+            if (progressCb) progressCb("Restoring encrypted credentials...", 45);
+            bool ok = downloadCloudFile(f.path, "/local/system/wifi_credentials.enc", "device");
             if (ok) {
-                Serial.println("[KryonCloud] Restored known_networks.json");
+                Serial.println("[KryonCloud] Restored wifi_credentials.enc");
                 anyRestored = true;
             }
         } else if (f.filename == "touch_cal_p.bin") {
@@ -1058,17 +985,16 @@ bool KryonCloudManager::restoreDeviceBackup(void (*progressCb)(const String& msg
 bool KryonCloudManager::checkBanStatus(CloudBanStatus& outStatus) {
     if (!isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/devices/ban-status";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/devices/ban-status";
     http.begin(client, url);
     if (isPaired()) {
         http.addHeader("X-Device-Credential", cachedToken);
         http.addHeader("Authorization", "Bearer " + cachedToken);
     }
-    http.addHeader("X-Device-MAC", WiFi.macAddress());
     if (cachedDeviceId.length() > 0) {
         http.addHeader("X-Device-Id", cachedDeviceId);
     }
@@ -1116,17 +1042,16 @@ bool KryonCloudManager::checkBanStatus(CloudBanStatus& outStatus) {
 bool KryonCloudManager::submitBanAppeal(const String& statement) {
     if (!isConnected()) return false;
 
+    String url = String(BASE_URL) + "/api/devices/appeal";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, url);
 
     HTTPClient http;
-    String url = String(BASE_URL) + "/api/devices/appeal";
     http.begin(client, url);
     http.addHeader("Content-Type", "application/json");
     if (isPaired()) {
         http.addHeader("Authorization", "Bearer " + cachedToken);
     }
-    http.addHeader("X-Device-MAC", WiFi.macAddress());
     http.setTimeout(8000);
 
     JsonDocument doc;

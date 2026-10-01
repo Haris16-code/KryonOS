@@ -1,12 +1,36 @@
 {
   "categories": [
     {
-      "name": "Getting Started with app store",
-      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/categories.json"
+      "name": "Getting Started",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/01-getting-started/category.json"
     },
     {
-      "name": "Updates",
-      "url": "https://raw.githubusercontent.com/.../updates_index.json"
+      "name": "Wi-Fi and Connectivity",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/02-wifi-and-connectivity/category.json"
+    },
+    {
+      "name": "Web Server and Files",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/03-web-server-and-files/category.json"
+    },
+    {
+      "name": "App Store and Apps",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/04-app-store-and-apps/category.json"
+    },
+    {
+      "name": "Permissions and Security",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/05-permissions-and-security/category.json"
+    },
+    {
+      "name": "KryonCloud and AI",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/06-kryoncloud-and-ai/category.json"
+    },
+    {
+      "name": "Settings and System",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/07-settings-and-system/category.json"
+    },
+    {
+      "name": "Troubleshooting and FAQs",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/08-troubleshooting-and-faqs/category.json"
     }
   ]
 }

@@ -1,0 +1,4 @@
+{
+  "title": "Touch Screen Calibration",
+  "content": "If touch taps are inaccurate:\n\n1. Open Settings -> Touch Calibrator.\n2. Tap precisely on the 4 red calibration crosshairs at each corner of the screen in order.\n3. The new calibration matrix is saved to flash and takes effect immediately."
+}

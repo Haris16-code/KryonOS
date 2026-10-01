@@ -1,0 +1,4 @@
+{
+  "title": "Session Security & Remember Me",
+  "content": "The Web Server protects against unauthorized access:\n\n- Brute-force protection: 5 consecutive failed attempts trigger an automatic 30-second lockout.\n- Secure HttpOnly cookies with SameSite protection.\n- Check 'Remember me' on login to keep your session active across browser restarts until you tap Logout."
+}

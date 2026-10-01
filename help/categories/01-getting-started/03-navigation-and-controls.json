@@ -1,0 +1,4 @@
+{
+  "title": "Navigation & Screen Controls",
+  "content": "KryonOS supports intuitive touch and keyboard navigation:\n\n- Tap items on the screen to open menus or launch apps.\n- Use on-screen virtual keyboard for text inputs and passwords.\n- Tap the top-right red [X] button or BACK button to exit any running JavaScript app.\n- Scroll through lists with the UP, DN, and touch scrollbars."
+}

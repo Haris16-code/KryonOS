@@ -1,4 +1,5 @@
 #include "OTAManager.h"
+#include "../Network/TLSHelper.h"
 #include <ArduinoJson.h>
 
 Preferences OTAManager::prefs;
@@ -78,14 +79,17 @@ bool OTAManager::checkUpdate(bool isBootCheck) {
     }
 
     WiFiClientSecure client;
-    client.setInsecure(); // GitHub / Fastly CDN TLS support
+    TLSHelper::configureTLS(client, UPDATE_MANIFEST_URL);
 
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(15000);
+    http.setReuse(false);
+    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
 
     if (!http.begin(client, UPDATE_MANIFEST_URL)) {
         cachedInfo.fetchFailed = true;
+        Serial.println("[OTA] http.begin failed");
         return false;
     }
 
@@ -206,12 +210,14 @@ bool OTAManager::startFlashUpdate(std::function<void(const OTAProgress&)> progre
     if (progressCb) progressCb(currentProgress);
 
     WiFiClientSecure client;
-    client.setInsecure(); // Fastly / AWS CDN edge TLS
+    TLSHelper::configureTLS(client, cachedInfo.firmwareUrl);
     client.setTimeout(15000);
 
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
     http.setTimeout(20000);
+    http.setReuse(false);
+    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
 
     if (!http.begin(client, cachedInfo.firmwareUrl)) {
         currentProgress.isError = true;

@@ -1,6 +1,9 @@
 #include "AppStoreUI.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
+#include "../Hal/Crypto/CryptoEngine.h"
+#include "../Kernel/Services/Network/TLSHelper.h"
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
@@ -72,7 +75,26 @@ bool AppStoreUI::downloadFile(const String& url, const String& destPath, const S
     }
     
     HTTPClient http;
-    http.begin(url);
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+    http.setTimeout(15000);
+    http.setReuse(false);
+    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
+
+    WiFiClientSecure secureClient;
+    WiFiClient plainClient;
+
+    if (url.startsWith("https://")) {
+        TLSHelper::configureTLS(secureClient, url);
+        if (!http.begin(secureClient, url)) {
+            dialogMessage = "SSL Connect Failed";
+            return false;
+        }
+    } else {
+        if (!http.begin(plainClient, url)) {
+            dialogMessage = "HTTP Connect Failed";
+            return false;
+        }
+    }
     
     // Draw initial progress UI
     tftInstance->fillScreen(TFT_BLACK);
@@ -222,7 +244,9 @@ bool AppStoreUI::fetchCategoryApps(const String& url) {
         
         currentApps[currentAppCount].id = id;
         currentApps[currentAppCount].metaUrl = appData["meta"].as<String>();
+        currentApps[currentAppCount].metaSha256 = appData["meta_sha256"] | (appData["metaSha256"] | "");
         currentApps[currentAppCount].appUrl = appData["app"].as<String>();
+        currentApps[currentAppCount].appSha256 = appData["app_sha256"] | (appData["appSha256"] | "");
         
         // Default placeholders before fetching meta
         String displayName = id;
@@ -386,13 +410,45 @@ void AppStoreUI::performInstall(int appIdx) {
     
     bool metaOk = downloadFile(app.metaUrl, destFolder + "app.json", "Downloading Meta...");
     if (!metaOk) return;
+
+    // Mandatory SHA-256 presence check: reject unsigned/unhashed packages
+    if (app.appSha256.length() == 0 || app.metaSha256.length() == 0) {
+        FileSystem::deleteFile((destFolder + "app.json").c_str());
+        FileSystem::rmdir(destFolder.c_str());
+        dialogMessage = "Installation Blocked:\nHash Not Found in store.";
+        storeState = 4;
+        drawDialog();
+        return;
+    }
+
+    // Verify SHA-256 integrity of app.json
+    String metaHash = CryptoEngine::sha256File((destFolder + "app.json").c_str());
+    if (!metaHash.equalsIgnoreCase(app.metaSha256)) {
+        FileSystem::deleteFile((destFolder + "app.json").c_str());
+        FileSystem::rmdir(destFolder.c_str());
+        dialogMessage = "Installation Failed:\nIntegrity Check Mismatch\non app metadata.";
+        storeState = 4;
+        drawDialog();
+        return;
+    }
     
     bool appOk = downloadFile(app.appUrl, destFolder + "main.js", "Downloading App...");
     if (!appOk) {
-        // Cleanup if failed
         FileSystem::deleteFile((destFolder + "app.json").c_str());
         FileSystem::deleteFile((destFolder + "main.js").c_str());
         FileSystem::rmdir(destFolder.c_str());
+        return;
+    }
+
+    // Verify SHA-256 integrity of main.js
+    String appHash = CryptoEngine::sha256File((destFolder + "main.js").c_str());
+    if (!appHash.equalsIgnoreCase(app.appSha256)) {
+        FileSystem::deleteFile((destFolder + "app.json").c_str());
+        FileSystem::deleteFile((destFolder + "main.js").c_str());
+        FileSystem::rmdir(destFolder.c_str());
+        dialogMessage = "Installation Failed:\nIntegrity Check Mismatch\non application payload.";
+        storeState = 4;
+        drawDialog();
         return;
     }
     
@@ -471,7 +527,11 @@ void AppStoreUI::drawAppList() {
     
     if (totalItems == 0) {
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString("No apps found.", 120, 100, 2);
+        if (isUpdateMode || currentCategoryName.indexOf("Update") != -1 || currentCategoryName.indexOf("up to date") != -1) {
+            tftInstance->drawString("No Update found.", 120, 100, 2);
+        } else {
+            tftInstance->drawString("No apps found.", 120, 100, 2);
+        }
     } else {
         for (int i = 0; i < itemsPerPage; i++) {
             int listIndex = scrollOffset + i;
@@ -581,19 +641,45 @@ void AppStoreUI::drawDialog() {
     tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
     tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Message", 120, 21, 2);
+    tftInstance->drawString("Notice", 120, 21, 2);
     
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    int nlIdx = dialogMessage.indexOf('\n');
-    if (nlIdx > 0) {
-        tftInstance->drawString(dialogMessage.substring(0, nlIdx), 120, 130, 2);
-        tftInstance->drawString(dialogMessage.substring(nlIdx + 1), 120, 150, 2);
-    } else {
-        tftInstance->drawString(dialogMessage, 120, 140, 2);
+    
+    // Split dialogMessage by '\n' and word-wrap lines if wider than 24 chars
+    std::vector<String> lines;
+    int start = 0;
+    while (start < (int)dialogMessage.length()) {
+        int nextNl = dialogMessage.indexOf('\n', start);
+        String seg = (nextNl >= 0) ? dialogMessage.substring(start, nextNl) : dialogMessage.substring(start);
+        start = (nextNl >= 0) ? nextNl + 1 : dialogMessage.length();
+        seg.trim();
+        
+        while (seg.length() > 0) {
+            if (seg.length() <= 24) {
+                lines.push_back(seg);
+                break;
+            }
+            int splitIdx = 24;
+            int spaceIdx = seg.lastIndexOf(' ', 24);
+            if (spaceIdx > 0) splitIdx = spaceIdx;
+            lines.push_back(seg.substring(0, splitIdx));
+            seg = seg.substring(splitIdx);
+            seg.trim();
+        }
+    }
+    
+    int numLines = lines.size();
+    if (numLines == 0) numLines = 1;
+    int startY = 135 - ((numLines - 1) * 11);
+    if (startY < 50) startY = 50;
+    
+    for (size_t i = 0; i < lines.size(); i++) {
+        tftInstance->drawString(lines[i], 120, startY + (i * 22), 2);
     }
     
     tftInstance->drawRoundRect(85, 220, 70, 30, 5, TFT_WHITE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    tftInstance->setTextDatum(MC_DATUM);
     tftInstance->drawString("OK", 120, 235, 2);
 }
 

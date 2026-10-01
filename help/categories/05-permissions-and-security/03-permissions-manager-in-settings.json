@@ -1,0 +1,4 @@
+{
+  "title": "Permissions Manager",
+  "content": "You have full control over app permissions in Settings:\n\n1. Open Settings -> Permissions Manager.\n2. View all installed applications and their current permissions status.\n3. Tap [ Revoke ] on any individual app to cancel always-allowed storage permissions.\n4. Tap [ Reset All ] to clear all permissions across all applications at once."
+}

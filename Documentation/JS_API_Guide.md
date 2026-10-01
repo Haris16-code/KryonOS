@@ -292,14 +292,21 @@ HarixOS enables direct hardware control of the ESP32 microcontroller pins via `S
 
 ---
 
-## 5. Unified File System (FS)
+## 5. Unified File System (FS) & Scoped App Sandboxing
 
 The `FS` global object controls the C++ virtual file system layer. It dynamically routes operations to the physical SD Card (prefixed with `/sd/`) or the high-speed Internal Flash (prefixed with `/local/`).
+
+### 5.1 Scoped Application Sandboxing (v2.0.1+)
+For security and privacy, all third-party JavaScript applications execute within a strictly sandboxed directory:
+- **Sandbox Root**: Applications are confined to their package folder (e.g. `/local/apps/<app_name>/` or `/sd/apps/<app_name>/`).
+- **Relative Path Resolution**: Passing a relative filename (such as `"data.json"` or `"levels/map1.dat"`) automatically resolves inside the app's sandboxed directory.
+- **Protected Locations**: Access to `/system/`, `/local/system/`, `/sd/system/`, or system vaults (`wifi_credentials.enc`, `app_permissions.json`) is forbidden and blocked at the Kernel level.
+- **Path Traversal Protection**: Any path containing `..` or `\` or attempting to escape the sandbox root is immediately rejected with `null` or `false` without interrupting the FreeRTOS watchdog.
 
 #### `FS.exists(path)`
 - **Parameters:** `path` (String)
 - **Returns:** `Boolean`
-- **Description:** Validates if a file or folder physically exists.
+- **Description:** Validates if a file or folder physically exists within the application's sandbox. Returns `false` for out-of-sandbox or protected paths.
 
 #### `FS.readTextFile(path)`
 - **Parameters:** `path` (String)

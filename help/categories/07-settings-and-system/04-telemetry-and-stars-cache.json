@@ -1,0 +1,4 @@
+{
+  "title": "Privacy & Telemetry",
+  "content": "KryonOS is built privacy-first:\n\n- Zero background tracking or unrequested network calls on boot.\n- GitHub repository statistics (stars/forks) are cached locally and fetched only on-demand when visiting the About section.\n- All network communications strictly enforce TLS certificate validation."
+}

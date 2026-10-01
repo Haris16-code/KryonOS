@@ -1,0 +1,4 @@
+{
+  "title": "Factory Reset & Recovery",
+  "content": "To restore default system configuration:\n\n- In Settings -> About Device, you can check device hardware specs.\n- In Settings -> Permissions Manager, tap [ Reset All ] to clear all permissions.\n- To fully reset web credentials, you can reconfigure them in Settings -> WiFi Options -> Web Server."
+}

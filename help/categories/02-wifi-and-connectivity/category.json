@@ -1,0 +1,17 @@
+{
+  "category": "Wi-Fi and Connectivity",
+  "articles": [
+    {
+      "title": "Connecting to Wi-Fi",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/02-wifi-and-connectivity/01-connecting-to-wifi.json"
+    },
+    {
+      "title": "Hardware Encrypted Vault",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/02-wifi-and-connectivity/02-encrypted-credentials-vault.json"
+    },
+    {
+      "title": "Network Troubleshooting",
+      "url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/help/categories/02-wifi-and-connectivity/03-network-troubleshooting.json"
+    }
+  ]
+}

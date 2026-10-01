@@ -1,0 +1,4 @@
+{
+  "title": "KryonAI Studio Assistant",
+  "content": "KryonAI allows on-device AI conversations:\n\n- Open KryonCloud -> KryonAI Studio tab.\n- Tap the input prompt bar to type questions with the on-screen keyboard.\n- Answers stream live directly to your screen via TLS-secured SSE connection.\n- JavaScript apps can also access AI capabilities via the KryonAI runtime API."
+}

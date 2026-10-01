@@ -1,0 +1,42 @@
+name: Update Help Center Index
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'help/**'
+      - '.github/scripts/generate_help_index.py'
+      - '.github/workflows/update_help_index.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Run Help Index Generator
+        run: |
+          python .github/scripts/generate_help_index.py "${{ github.repository }}" "main"
+
+      - name: Commit and Push Changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add help/index.json help/categories/**/category.json
+          if git diff --staged --quiet; then
+            echo "No changes in Help Center indices to commit."
+          else
+            git commit -m "docs(help): auto-update Help Center indices and raw URLs [skip ci]"
+            git push
+          fi

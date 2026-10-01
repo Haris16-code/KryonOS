@@ -2,7 +2,7 @@
 #include "TouchDriver.h"
 #include <SD.h>
 #include <LittleFS.h>
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
 #include "../Kernel/TimeManager.h"
 #include "../Keyboard/MyKeyboard.h"
 #include <WiFi.h>
@@ -12,6 +12,8 @@
 #include <esp_task_wdt.h>
 #include "../Kernel/WiFiManager.h"
 #include "../Kernel/Services/OTA/OTAManager.h"
+#include "../Kernel/Services/Network/TLSHelper.h"
+#include "../Runtime/JSBindings.h"
 
 TFT_eSPI *SettingsUI::tftInstance = nullptr;
 bool SettingsUI::otaErrorShown = false;
@@ -49,40 +51,46 @@ void SettingsUI::draw() {
 
     int y = 40;
     
-    // Button 1: WiFi
-    tftInstance->fillRoundRect(20, y, 200, 35, 5, TFT_BLUE);
+    // Button 1: WiFi (y: 40..70)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, TFT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLUE);
-    tftInstance->drawString("WiFi Options", 120, y + 17, 2);
-    y += 40;
+    tftInstance->drawString("WiFi Options", 120, y + 15, 2);
+    y += 34;
 
-    // Button 2: Touch Calibrator
-    tftInstance->fillRoundRect(20, y, 200, 35, 5, TFT_ORANGE);
+    // Button 2: Touch Calibrator (y: 74..104)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, TFT_ORANGE);
     tftInstance->setTextColor(TFT_WHITE, TFT_ORANGE);
-    tftInstance->drawString("Touch Calibrator", 120, y + 17, 2);
-    y += 40;
+    tftInstance->drawString("Touch Calibrator", 120, y + 15, 2);
+    y += 34;
 
-    // Button 3: Manage Apps
-    tftInstance->fillRoundRect(20, y, 200, 35, 5, TFT_PURPLE);
+    // Button 3: Manage Apps (y: 108..138)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, TFT_PURPLE);
     tftInstance->setTextColor(TFT_WHITE, TFT_PURPLE);
-    tftInstance->drawString("Manage Apps", 120, y + 17, 2);
-    y += 40;
+    tftInstance->drawString("Manage Apps", 120, y + 15, 2);
+    y += 34;
 
-    // Button 4: Time & Region
-    tftInstance->fillRoundRect(20, y, 200, 35, 5, TFT_CYAN);
+    // Button 4: Permissions Manager (y: 142..172)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, 0x03E0); // Dark Forest Green
+    tftInstance->setTextColor(TFT_WHITE, 0x03E0);
+    tftInstance->drawString("Permissions Manager", 120, y + 15, 2);
+    y += 34;
+
+    // Button 5: Time & Region (y: 176..206)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, TFT_CYAN);
     tftInstance->setTextColor(TFT_BLACK, TFT_CYAN);
-    tftInstance->drawString("Time & Region", 120, y + 17, 2);
-    y += 40;
+    tftInstance->drawString("Time & Region", 120, y + 15, 2);
+    y += 34;
 
-    // Button 5: About
-    tftInstance->fillRoundRect(20, y, 200, 35, 5, TFT_DARKGREY);
+    // Button 6: About (y: 210..240)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, TFT_DARKGREY);
     tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
-    tftInstance->drawString("About Device", 120, y + 17, 2);
-    y += 40;
+    tftInstance->drawString("About Device", 120, y + 15, 2);
+    y += 34;
     
-    // Button 6: System Updates
-    tftInstance->fillRoundRect(20, y, 200, 35, 5, TFT_RED);
+    // Button 7: System Updates (y: 244..274)
+    tftInstance->fillRoundRect(20, y, 200, 30, 4, TFT_RED);
     tftInstance->setTextColor(TFT_WHITE, TFT_RED);
-    tftInstance->drawString("System Updates", 120, y + 17, 2);
+    tftInstance->drawString("System Updates", 120, y + 15, 2);
 
     // Touch Footer
     tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
@@ -95,17 +103,19 @@ void SettingsUI::handleTouch(uint16_t x, uint16_t y) {
     extern int currentState;
 
     if (x >= 20 && x <= 220) {
-        if (y >= 40 && y <= 75) {
+        if (y >= 40 && y <= 70) {
             currentState = 6; // STATE_SETTINGS_WIFI
-        } else if (y >= 80 && y <= 115) {
+        } else if (y >= 74 && y <= 104) {
             currentState = 4; // STATE_CALIBRATOR
-        } else if (y >= 120 && y <= 155) {
+        } else if (y >= 108 && y <= 138) {
             currentState = 8; // STATE_SETTINGS_APPS
-        } else if (y >= 160 && y <= 195) {
+        } else if (y >= 142 && y <= 172) {
+            currentState = 17; // STATE_SETTINGS_PERMISSIONS
+        } else if (y >= 176 && y <= 206) {
             currentState = 9; // STATE_SETTINGS_TIME
-        } else if (y >= 200 && y <= 235) {
+        } else if (y >= 210 && y <= 240) {
             currentState = 7; // STATE_SETTINGS_ABOUT
-        } else if (y >= 240 && y <= 275) {
+        } else if (y >= 244 && y <= 274) {
             currentState = 12; // STATE_UPDATER_MANUAL
         }
     }
@@ -195,7 +205,7 @@ void SettingsUI::drawWiFi() {
         // Button 4: Start Web Server (y: 244, h: 34)
         tftInstance->fillRoundRect(12, 244, 216, 34, 5, TFT_ORANGE);
         tftInstance->setTextColor(TFT_WHITE, TFT_ORANGE);
-        tftInstance->drawString("Launch Web Server", 120, 261, 2);
+        tftInstance->drawString("Web Server", 120, 261, 2);
     }
 
     // Touch Footer
@@ -438,14 +448,15 @@ static bool fetchGitHubStarsLive() {
         return false;
     }
 
+    String starsUrl = "https://api.github.com/repos/Haris16-code/KryonOS/stargazers/count";
     WiFiClientSecure client;
-    client.setInsecure();
+    TLSHelper::configureTLS(client, starsUrl);
     client.setTimeout(2500);
 
     HTTPClient http;
     http.setTimeout(2500);
 
-    if (!http.begin(client, "https://api.github.com/repos/Haris16-code/KryonOS/stargazers/count")) {
+    if (!http.begin(client, starsUrl)) {
         s_lastFetchLive = false;
         return false;
     }
@@ -977,6 +988,295 @@ void SettingsUI::handleAppsTouch(uint16_t x, uint16_t y) {
             appScroll = 0;
             appSelected = -1;
             appMenuOpen = false;
+            currentState = 1; // STATE_SETTINGS
+        }
+    }
+}
+
+// ----------------------------------------------------
+// PERMISSIONS MANAGER
+// ----------------------------------------------------
+
+struct PermAppEntry {
+    String packageName;
+    String appName;
+    String storageDrive;
+    std::vector<String> permissions;
+};
+
+static int s_permPage = 0;
+static bool s_permResetConfirm = false;
+static std::vector<PermAppEntry> s_permApps;
+
+static void loadPermissionsData() {
+    s_permApps.clear();
+    String path = "/local/system/app_permissions.json";
+    if (!FileSystem::exists(path.c_str())) return;
+    
+    String content = FileSystem::readTextFile(path.c_str());
+    if (content.length() == 0) return;
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, content);
+    if (err) return;
+
+    JsonObject root = doc.as<JsonObject>();
+    for (JsonPair kv : root) {
+        String pkg = String(kv.key().c_str());
+        JsonArray arr = kv.value().as<JsonArray>();
+        if (arr.isNull() || arr.size() == 0) continue;
+
+        PermAppEntry entry;
+        entry.packageName = pkg;
+        entry.appName = pkg;
+        entry.storageDrive = "[LFS]";
+
+        for (JsonVariant v : arr) {
+            entry.permissions.push_back(v.as<String>());
+        }
+
+        // Try reading display name from app.json in LittleFS or SD
+        String lfsJson = "/local/apps/" + pkg + "/app.json";
+        String sdJson = "/sd/apps/" + pkg + "/app.json";
+        if (FileSystem::exists(lfsJson.c_str())) {
+            String jc = FileSystem::readTextFile(lfsJson.c_str());
+            String n = FileSystem::parseJsonValue(jc, "name");
+            if (n.length() > 0) entry.appName = n;
+            entry.storageDrive = "[LFS]";
+        } else if (FileSystem::exists(sdJson.c_str())) {
+            String jc = FileSystem::readTextFile(sdJson.c_str());
+            String n = FileSystem::parseJsonValue(jc, "name");
+            if (n.length() > 0) entry.appName = n;
+            entry.storageDrive = "[SD]";
+        }
+
+        s_permApps.push_back(entry);
+    }
+}
+
+void SettingsUI::drawPermissions() {
+    if (!tftInstance) return;
+
+    loadPermissionsData();
+
+    tftInstance->fillScreen(TFT_BLACK);
+    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
+
+    // Header Bar
+    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK);
+    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
+    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+    tftInstance->setTextDatum(TL_DATUM);
+    tftInstance->drawString("Permissions", 14, 13, 2);
+
+    // Reset All Button in header
+    if (!s_permApps.empty()) {
+        tftInstance->fillRoundRect(140, 9, 88, 24, 4, TFT_RED);
+        tftInstance->setTextColor(TFT_WHITE, TFT_RED);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("Reset All", 184, 21, 2);
+    }
+
+    if (s_permResetConfirm) {
+        // Confirmation Dialog
+        tftInstance->fillRoundRect(15, 75, 210, 160, 8, TFT_DARKGREY);
+        tftInstance->drawRoundRect(15, 75, 210, 160, 8, TFT_WHITE);
+
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->setTextColor(TFT_GOLD, TFT_DARKGREY);
+        tftInstance->drawString("Reset Permissions?", 120, 98, 2);
+
+        tftInstance->setTextColor(TFT_WHITE, TFT_DARKGREY);
+        tftInstance->drawString("Revoke and clear all", 120, 125, 2);
+        tftInstance->drawString("granted app permissions?", 120, 145, 2);
+
+        // Confirm button
+        tftInstance->fillRoundRect(25, 180, 90, 34, 4, TFT_RED);
+        tftInstance->setTextColor(TFT_WHITE, TFT_RED);
+        tftInstance->drawString("Confirm", 70, 197, 2);
+
+        // Cancel button
+        tftInstance->fillRoundRect(125, 180, 90, 34, 4, TFT_NAVY);
+        tftInstance->setTextColor(TFT_WHITE, TFT_NAVY);
+        tftInstance->drawString("Cancel", 170, 197, 2);
+
+        // Footer
+        tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("BACK", 120, 300, 2);
+        return;
+    }
+
+    if (s_permApps.empty()) {
+        tftInstance->fillRoundRect(10, 55, 220, 190, 6, 0x10A2); // Dark navy
+        tftInstance->drawRoundRect(10, 55, 220, 190, 6, TFT_CYAN);
+
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->setTextColor(TFT_GOLD, 0x10A2);
+        tftInstance->drawString("No Granted Permissions", 120, 85, 2);
+
+        tftInstance->setTextColor(TFT_WHITE, 0x10A2);
+        tftInstance->drawString("Apps access internal folders", 120, 120, 2);
+        tftInstance->drawString("without permission.", 120, 140, 2);
+        tftInstance->drawString("External storage requests", 120, 175, 2);
+        tftInstance->drawString("will prompt on demand.", 120, 195, 2);
+    } else {
+        int itemsPerPage = 3;
+        int totalPages = (s_permApps.size() + itemsPerPage - 1) / itemsPerPage;
+        if (s_permPage >= totalPages) s_permPage = totalPages - 1;
+        if (s_permPage < 0) s_permPage = 0;
+
+        int startIdx = s_permPage * itemsPerPage;
+        int yPos = 42;
+
+        for (int i = 0; i < itemsPerPage && (startIdx + i) < (int)s_permApps.size(); i++) {
+            const PermAppEntry& entry = s_permApps[startIdx + i];
+
+            // Card background
+            tftInstance->fillRoundRect(10, yPos, 220, 62, 5, 0x18C3);
+            tftInstance->drawRoundRect(10, yPos, 220, 62, 5, 0x2945);
+
+            // App Name & Package
+            tftInstance->setTextDatum(TL_DATUM);
+            tftInstance->setTextColor(TFT_WHITE, 0x18C3);
+            String title = entry.appName;
+            if (title.length() > 16) title = title.substring(0, 14) + "..";
+            tftInstance->drawString(title, 16, yPos + 6, 2);
+
+            tftInstance->setTextColor(TFT_DARKGREY, 0x18C3);
+            String sub = entry.packageName;
+            if (sub.length() > 20) sub = sub.substring(0, 18) + "..";
+            tftInstance->drawString(sub, 16, yPos + 24, 1);
+
+            // Permission Badge
+            tftInstance->fillRoundRect(16, yPos + 38, 110, 18, 3, 0x03E0);
+            tftInstance->setTextColor(TFT_WHITE, 0x03E0);
+            tftInstance->setTextDatum(MC_DATUM);
+            tftInstance->drawString("Storage: GRANTED", 71, yPos + 47, 1);
+
+            // Revoke Button
+            tftInstance->fillRoundRect(145, yPos + 22, 75, 30, 4, TFT_RED);
+            tftInstance->setTextColor(TFT_WHITE, TFT_RED);
+            tftInstance->drawString("Revoke", 182, yPos + 37, 2);
+
+            yPos += 68;
+        }
+
+        // Pagination Bar (y: 248 to 278)
+        int totalApps = s_permApps.size();
+        if (totalPages > 1) {
+            // Prev Button
+            if (s_permPage > 0) {
+                tftInstance->fillRoundRect(10, 248, 60, 28, 4, TFT_BLUE);
+                tftInstance->setTextColor(TFT_WHITE, TFT_BLUE);
+                tftInstance->setTextDatum(MC_DATUM);
+                tftInstance->drawString("< Prev", 40, 262, 2);
+            }
+
+            // Page Indicator
+            tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
+            tftInstance->setTextDatum(MC_DATUM);
+            tftInstance->drawString(String(s_permPage + 1) + "/" + String(totalPages), 120, 262, 2);
+
+            // Next Button
+            if (s_permPage < totalPages - 1) {
+                tftInstance->fillRoundRect(170, 248, 60, 28, 4, TFT_BLUE);
+                tftInstance->setTextColor(TFT_WHITE, TFT_BLUE);
+                tftInstance->setTextDatum(MC_DATUM);
+                tftInstance->drawString("Next >", 200, 262, 2);
+            }
+        }
+    }
+
+    // Footer
+    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->drawString("BACK", 120, 300, 2);
+}
+
+void SettingsUI::handlePermissionsTouch(uint16_t x, uint16_t y) {
+    extern int currentState;
+
+    if (s_permResetConfirm) {
+        if (y >= 180 && y <= 214) {
+            if (x >= 25 && x <= 115) { // Confirm Reset
+                FileSystem::deleteFile("/local/system/app_permissions.json");
+                JSBindings::clearAllSessionPermissions();
+                s_permResetConfirm = false;
+                drawPermissions();
+                return;
+            } else if (x >= 125 && x <= 215) { // Cancel
+                s_permResetConfirm = false;
+                drawPermissions();
+                return;
+            }
+        }
+        if (y >= 285 && x >= 60 && x <= 180) {
+            s_permResetConfirm = false;
+            currentState = 1; // Back to Settings Menu
+            return;
+        }
+        return;
+    }
+
+    // Header: Reset All Button (x: 140..228, y: 6..34)
+    if (!s_permApps.empty() && x >= 140 && x <= 228 && y >= 6 && y <= 34) {
+        s_permResetConfirm = true;
+        drawPermissions();
+        return;
+    }
+
+    // Revoke Buttons
+    if (!s_permApps.empty()) {
+        int itemsPerPage = 3;
+        int startIdx = s_permPage * itemsPerPage;
+        int yPos = 42;
+
+        for (int i = 0; i < itemsPerPage && (startIdx + i) < (int)s_permApps.size(); i++) {
+            if (x >= 145 && x <= 220 && y >= yPos + 22 && y <= yPos + 54) {
+                String pkg = s_permApps[startIdx + i].packageName;
+                
+                // Remove from app_permissions.json
+                String path = "/local/system/app_permissions.json";
+                if (FileSystem::exists(path.c_str())) {
+                    String content = FileSystem::readTextFile(path.c_str());
+                    JsonDocument doc;
+                    deserializeJson(doc, content);
+                    doc.remove(pkg);
+                    String out;
+                    serializeJson(doc, out);
+                    FileSystem::writeTextFile(path.c_str(), out.c_str());
+                }
+
+                // Clear session cache
+                JSBindings::revokeSessionPermission(pkg);
+
+                drawPermissions();
+                return;
+            }
+            yPos += 68;
+        }
+
+        // Pagination
+        int totalPages = (s_permApps.size() + itemsPerPage - 1) / itemsPerPage;
+        if (totalPages > 1 && y >= 248 && y <= 278) {
+            if (x >= 10 && x <= 70 && s_permPage > 0) {
+                s_permPage--;
+                drawPermissions();
+                return;
+            } else if (x >= 170 && x <= 230 && s_permPage < totalPages - 1) {
+                s_permPage++;
+                drawPermissions();
+                return;
+            }
+        }
+    }
+
+    // Bottom Nav: BACK
+    if (y >= 285) {
+        if (x > 60 && x < 180) {
             currentState = 1; // STATE_SETTINGS
         }
     }

@@ -1,0 +1,4 @@
+{
+  "title": "Cross-Storage Sandboxing",
+  "content": "KryonOS enforces bidirectional storage protection:\n\n- LittleFS to SD Card: Apps running on flash cannot access SD Card files without permission.\n- SD Card to LittleFS: Apps running on SD cannot access flash files without permission.\n- System folders (/local/system and /sd/system) are completely protected and blocked from user app access."
+}

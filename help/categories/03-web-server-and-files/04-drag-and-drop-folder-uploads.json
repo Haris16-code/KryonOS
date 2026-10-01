@@ -1,0 +1,4 @@
+{
+  "title": "Drag & Drop Folder Uploads",
+  "content": "Managing files on LittleFS and SD Card is simple in the Web Manager:\n\n- Drag and drop files or entire nested directories directly into the browser window.\n- Use the 'Upload Folder' button to select a complete project folder.\n- The server automatically creates necessary subdirectories and saves files sequentially."
+}

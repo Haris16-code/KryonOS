@@ -1,6 +1,6 @@
 #include "HarixKernel.h"
 #include "../../Runtime/JSBindings.h"
-#include "../../File System/FileSystem.h"
+#include "../../FileSystem/FileSystem.h"
 #include "../../Settings/TouchDriver.h"
 #include "../Services/NotificationManager.h"
 #include "../Services/IPCManager.h"
@@ -405,11 +405,24 @@ void HarixKernel::runFile(const char* filePath) {
 
     JSBindings::init(ctx, tftInstance);
     
+    // Configure strict app filesystem sandbox root
+    {
+        String pathStr = String(filePath);
+        int lastSlash = pathStr.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            String appDir = pathStr.substring(0, lastSlash + 1);
+            JSBindings::setSandboxRoot(appDir);
+        } else {
+            JSBindings::setSandboxRoot("");
+        }
+    }
+
     {
         String content = FileSystem::readTextFile(filePath);
         if (content.length() == 0) {
             String err = "Failed to read JS file: " + String(filePath) + "\n";
             printToAllSerials(err);
+            JSBindings::setSandboxRoot("");
             duk_destroy_heap(ctx);
             ctx = nullptr;
             return;
@@ -419,6 +432,7 @@ void HarixKernel::runFile(const char* filePath) {
         duk_int_t rc = duk_pcompile_string_filename(ctx, 0, content.c_str());
         if (rc != 0) {
             checkJSError(ctx, rc);
+            JSBindings::setSandboxRoot("");
             duk_destroy_heap(ctx);
             ctx = nullptr;
             return;
@@ -428,8 +442,9 @@ void HarixKernel::runFile(const char* filePath) {
     duk_int_t rc = duk_pcall(ctx, 0);
     checkJSError(ctx, rc);
     
-    // Cleanup active HTTP servers, sockets and JS callbacks
+    // Cleanup active HTTP servers, sockets, sandbox root, and JS callbacks
     JSBindings::cleanup(ctx);
+    JSBindings::setSandboxRoot("");
 
     // Destroy heap after app exits to free RAM
     duk_destroy_heap(ctx);

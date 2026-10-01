@@ -1,0 +1,4 @@
+{
+  "title": "RAM Optimization & Memory",
+  "content": "Tips for managing device memory:\n\n- When closing JavaScript applications, all display buffers and 3D framebuffers are immediately freed from RAM.\n- On devices without PSRAM, turning off Wi-Fi when running heavy games or 3D demos frees up over 50 KB of internal heap."
+}

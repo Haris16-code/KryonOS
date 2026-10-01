@@ -1,6 +1,8 @@
 #include "WiFiManager.h"
-#include "../File System/FileSystem.h"
+#include "TimeManager.h"
+#include "../FileSystem/FileSystem.h"
 #include "../WebManager/WebManager.h"
+#include "../Hal/Crypto/CryptoEngine.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
@@ -12,8 +14,8 @@ unsigned long WiFiManager::lastInternetCheck = 0;
 unsigned long WiFiManager::lastReconnectAttempt = 0;
 bool WiFiManager::internetReachable = false;
 
-static const char* KNOWN_NETWORKS_LOCAL = "/local/known_networks.json";
-static const char* KNOWN_NETWORKS_SD    = "/sd/known_networks.json";
+static const char* WIFI_CREDS_ENC_LOCAL = "/local/system/wifi_credentials.enc";
+static const char* WIFI_CREDS_ENC_SD    = "/sd/system/wifi_credentials.enc";
 static const char* CAPTIVE_PORTAL_URL   = "http://connectivitycheck.gstatic.com/generate_204";
 
 void WiFiManager::init() {
@@ -218,6 +220,9 @@ bool WiFiManager::connectTo(const String& ssid, const String& password, uint32_t
         internetReachable = checkInternetConnectivity(3000);
         lastInternetCheck = millis();
         currentState = internetReachable ? WIFI_STATE_ONLINE : WIFI_STATE_LOCAL_ONLY;
+        if (internetReachable) {
+            TimeManager::syncNTP();
+        }
         return true;
     }
 
@@ -352,35 +357,79 @@ void WiFiManager::backgroundLoop() {
 }
 
 void WiFiManager::autoMigrateLegacyCredentials() {
-    // If known_networks.json already exists, migration is already done
-    if (FileSystem::exists(KNOWN_NETWORKS_LOCAL) || FileSystem::exists(KNOWN_NETWORKS_SD)) {
+    const char* legacyJsonPaths[] = { "/local/known_networks.json", "/known_networks.json", "/sd/known_networks.json" };
+    const char* legacyTxtPaths[] = { "/local/wifi.txt", "/sd/wifi.txt" };
+
+    // If encrypted credentials already exist, securely purge any stale cleartext files
+    if (FileSystem::exists(WIFI_CREDS_ENC_LOCAL) || FileSystem::exists(WIFI_CREDS_ENC_SD)) {
+        for (const char* path : legacyJsonPaths) {
+            if (FileSystem::exists(path)) {
+                FileSystem::deleteFile(path);
+                Serial.printf("[WiFiManager] Purged stale cleartext legacy file: %s\n", path);
+            }
+        }
+        for (const char* path : legacyTxtPaths) {
+            if (FileSystem::exists(path)) {
+                FileSystem::deleteFile(path);
+                Serial.printf("[WiFiManager] Purged stale cleartext legacy file: %s\n", path);
+            }
+        }
         return;
     }
 
-    String legacyFile = "";
-    if (FileSystem::exists("/sd/wifi.txt")) {
-        legacyFile = "/sd/wifi.txt";
-    } else if (FileSystem::exists("/local/wifi.txt")) {
-        legacyFile = "/local/wifi.txt";
+    // 1. Check legacy JSON files on updated devices
+    for (const char* path : legacyJsonPaths) {
+        if (FileSystem::exists(path)) {
+            String json = FileSystem::readTextFile(path);
+            if (json.length() > 0) {
+                JsonDocument doc;
+                DeserializationError err = deserializeJson(doc, json);
+                if (!err) {
+                    JsonArray arr = doc.as<JsonArray>();
+                    for (JsonObject obj : arr) {
+                        SavedNetwork net;
+                        net.ssid = obj["ssid"] | "";
+                        net.password = obj["password"] | "";
+                        net.lastConnected = obj["lastConnected"] | 0;
+                        if (net.ssid.length() > 0) {
+                            savedNetworks.push_back(net);
+                        }
+                    }
+                    if (!savedNetworks.empty()) {
+                        Serial.printf("[WiFiManager] Migrated %d networks from legacy JSON: %s\n", (int)savedNetworks.size(), path);
+                        persistKnownNetworks();
+                        FileSystem::deleteFile(path);
+                        break;
+                    }
+                }
+            }
+        }
     }
 
-    if (legacyFile.length() > 0) {
-        String content = FileSystem::readTextFile(legacyFile.c_str());
-        int nlIdx = content.indexOf('\n');
-        if (nlIdx != -1) {
-            String ssid = content.substring(0, nlIdx);
-            String pass = content.substring(nlIdx + 1);
-            ssid.trim();
-            pass.trim();
+    // 2. Check legacy wifi.txt if still empty
+    if (savedNetworks.empty()) {
+        for (const char* path : legacyTxtPaths) {
+            if (FileSystem::exists(path)) {
+                String content = FileSystem::readTextFile(path);
+                int nlIdx = content.indexOf('\n');
+                if (nlIdx != -1) {
+                    String ssid = content.substring(0, nlIdx);
+                    String pass = content.substring(nlIdx + 1);
+                    ssid.trim();
+                    pass.trim();
 
-            if (ssid.length() > 0) {
-                Serial.printf("[WiFiManager] Migrating legacy credentials for '%s' to JSON...\n", ssid.c_str());
-                SavedNetwork net;
-                net.ssid = ssid;
-                net.password = pass;
-                net.lastConnected = millis();
-                savedNetworks.push_back(net);
-                persistKnownNetworks();
+                    if (ssid.length() > 0) {
+                        Serial.printf("[WiFiManager] Migrating legacy credentials for '%s' to encrypted storage...\n", ssid.c_str());
+                        SavedNetwork net;
+                        net.ssid = ssid;
+                        net.password = pass;
+                        net.lastConnected = millis();
+                        savedNetworks.push_back(net);
+                        persistKnownNetworks();
+                        FileSystem::deleteFile(path);
+                        break;
+                    }
+                }
             }
         }
     }
@@ -390,21 +439,27 @@ void WiFiManager::loadKnownNetworks() {
     savedNetworks.clear();
     String filePath = "";
 
-    if (FileSystem::exists(KNOWN_NETWORKS_LOCAL)) {
-        filePath = KNOWN_NETWORKS_LOCAL;
-    } else if (FileSystem::exists(KNOWN_NETWORKS_SD)) {
-        filePath = KNOWN_NETWORKS_SD;
+    if (FileSystem::exists(WIFI_CREDS_ENC_LOCAL)) {
+        filePath = WIFI_CREDS_ENC_LOCAL;
+    } else if (FileSystem::exists(WIFI_CREDS_ENC_SD)) {
+        filePath = WIFI_CREDS_ENC_SD;
     }
 
     if (filePath.length() == 0) return;
 
-    String json = FileSystem::readTextFile(filePath.c_str());
-    if (json.length() == 0) return;
+    String encJson = FileSystem::readTextFile(filePath.c_str());
+    if (encJson.length() == 0) return;
+
+    String decryptedJson = CryptoEngine::deviceDecrypt(encJson);
+    if (decryptedJson.length() == 0) {
+        Serial.printf("[WiFiManager] Failed to decrypt %s\n", filePath.c_str());
+        return;
+    }
 
     JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, json);
+    DeserializationError err = deserializeJson(doc, decryptedJson);
     if (err) {
-        Serial.printf("[WiFiManager] Failed to parse %s: %s\n", filePath.c_str(), err.c_str());
+        Serial.printf("[WiFiManager] Failed to parse decrypted credentials: %s\n", err.c_str());
         return;
     }
 
@@ -419,7 +474,7 @@ void WiFiManager::loadKnownNetworks() {
         }
     }
 
-    Serial.printf("[WiFiManager] Loaded %d known networks from disk.\n", (int)savedNetworks.size());
+    Serial.printf("[WiFiManager] Loaded %d known networks from encrypted storage.\n", (int)savedNetworks.size());
 }
 
 void WiFiManager::persistKnownNetworks() {
@@ -433,14 +488,20 @@ void WiFiManager::persistKnownNetworks() {
         obj["lastConnected"] = net.lastConnected;
     }
 
-    String output;
-    serializeJson(doc, output);
+    String rawJson;
+    serializeJson(doc, rawJson);
 
-    // Save to LittleFS
-    FileSystem::writeTextFile(KNOWN_NETWORKS_LOCAL, output.c_str());
+    String encryptedEnvelope = CryptoEngine::deviceEncrypt(rawJson);
+    if (encryptedEnvelope.length() == 0) {
+        Serial.println("[WiFiManager] Error: Failed to encrypt WiFi credentials!");
+        return;
+    }
+
+    // Save to encrypted file in LittleFS system folder
+    FileSystem::writeTextFile(WIFI_CREDS_ENC_LOCAL, encryptedEnvelope.c_str());
 
     // Also mirror to SD if mounted
     if (FileSystem::isSDMounted()) {
-        FileSystem::writeTextFile(KNOWN_NETWORKS_SD, output.c_str());
+        FileSystem::writeTextFile(WIFI_CREDS_ENC_SD, encryptedEnvelope.c_str());
     }
 }

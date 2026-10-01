@@ -62,8 +62,10 @@ bool FileSystem::init() {
     // Create required directories if LittleFS is mounted
     if (success) {
         if (!LittleFS.exists("/apps")) LittleFS.mkdir("/apps");
+        if (!LittleFS.exists("/system")) LittleFS.mkdir("/system");
         if (!LittleFS.exists("/tmp_download")) LittleFS.mkdir("/tmp_download");
         Serial.println("LittleFS directories verified.");
+        migrateSystemFiles();
     }
 
     // Initialize dedicated SPI bus for SD Card at runtime
@@ -645,3 +647,44 @@ void FileSystem::unmountSD() {
 bool FileSystem::formatSD() {
     return false; // Not natively supported on standard Arduino core without custom FAT commands
 }
+
+bool FileSystem::isSystemPath(const char* path) {
+    if (!path || path[0] == '\0') return false;
+    String p = String(path);
+    p.trim();
+    if (p.indexOf("..") >= 0 || p.indexOf("\\") >= 0) return true; // Block traversal attempts
+    while (p.indexOf("//") >= 0) p.replace("//", "/");
+
+    // Block system directory targets
+    if (p.startsWith("/local/system") || p.startsWith("/sd/system") ||
+        p.startsWith("/littlefs/system") || p.startsWith("local/system") ||
+        p.startsWith("sd/system") || p.startsWith("littlefs/system") ||
+        p.startsWith("/system") || p == "system") {
+        return true;
+    }
+
+    // Block sensitive files and legacy credential paths
+    if (p == "/local/known_networks.json" || p == "/known_networks.json" ||
+        p == "local/known_networks.json" || p == "known_networks.json" ||
+        p == "/littlefs/known_networks.json" || p == "/littlefs/local/known_networks.json" ||
+        p.endsWith("/wifi_credentials.enc") || p.endsWith("/app_permissions.json")) {
+        return true;
+    }
+
+    return false;
+}
+
+void FileSystem::migrateSystemFiles() {
+    // Migrate legacy stars_cache.json if present
+    const char* legacyStars[] = { "/local/stars_cache.json", "/stars_cache.json" };
+    for (const char* oldPath : legacyStars) {
+        if (FileSystem::exists(oldPath)) {
+            if (!FileSystem::exists("/local/system/stars_cache.json")) {
+                FileSystem::copyFile(oldPath, "/local/system/stars_cache.json");
+                Serial.println("[FileSystem] Migrated stars_cache.json to /local/system/");
+            }
+            FileSystem::deleteFile(oldPath);
+        }
+    }
+}
+

@@ -1,5 +1,5 @@
 #include "TimeManager.h"
-#include "../File System/FileSystem.h"
+#include "../FileSystem/FileSystem.h"
 #include <esp_sntp.h>
 
 String TimeManager::currentTimezone = "UTC0";
@@ -27,21 +27,46 @@ void TimeManager::savePreferences() {
     FileSystem::writeTextFile(PREF_FILE, content.c_str());
 }
 
+time_t TimeManager::getBuildEpoch() {
+    char s_month[5] = {0};
+    int month = 0, day = 1, year = 2025, hour = 0, min = 0, sec = 0;
+    static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
+    sscanf(__DATE__, "%s %d %d", s_month, &day, &year);
+    sscanf(__TIME__, "%d:%d:%d", &hour, &min, &sec);
+    const char* p = strstr(month_names, s_month);
+    if (p) month = (p - month_names) / 3;
+    struct tm t = {0};
+    t.tm_year = year - 1900;
+    t.tm_mon = month;
+    t.tm_mday = day;
+    t.tm_hour = hour;
+    t.tm_min = min;
+    t.tm_sec = sec;
+    return mktime(&t);
+}
+
+bool TimeManager::isTimeSynced() {
+    time_t now = time(nullptr);
+    return (now >= getBuildEpoch());
+}
+
 void TimeManager::init() {
     loadPreferences();
     setenv("TZ", currentTimezone.c_str(), 1);
     tzset();
-    // Defer esp_sntp_init() until syncNTP() to prevent LwIP assertions
+
+    // Baseline fallback epoch to avoid MBEDTLS_X509_BADCERT_FUTURE on boot
+    time_t buildEpoch = getBuildEpoch();
+    if (time(nullptr) < buildEpoch) {
+        struct timeval tv = { .tv_sec = buildEpoch, .tv_usec = 0 };
+        settimeofday(&tv, NULL);
+    }
 }
 
 void TimeManager::syncNTP() {
     if (!ntpEnabled) return;
-    // Configure and start SNTP only when WiFi is active
-    esp_sntp_stop();
-    esp_sntp_setoperatingmode(ESP_SNTP_OPMODE_POLL);
-    esp_sntp_setservername(0, "pool.ntp.org");
-    esp_sntp_setservername(1, "time.nist.gov");
-    esp_sntp_init();
+    // Configure and start SNTP non-blocking
+    configTime(0, 0, "pool.ntp.org", "time.google.com", "time.nist.gov");
 }
 
 void TimeManager::setManualTime(int year, int month, int day, int hour, int minute) {
