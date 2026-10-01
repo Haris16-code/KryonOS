@@ -23,9 +23,6 @@ permissions:
   contents: write
 
 jobs:
-  # =========================================================================
-  # JOB 1: Compile All 5 Boards Simultaneously (Isolated Parallel Runners)
-  # =========================================================================
   build:
     name: Compile ${{ matrix.board }}
     runs-on: ubuntu-24.04
@@ -49,7 +46,7 @@ jobs:
           python-version: '3.12'
 
       - name: Cache Pip & PlatformIO Toolchains
-        uses: actions/cache@v6
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/pip
@@ -66,62 +63,63 @@ jobs:
           pip install --upgrade platformio esptool
 
       - name: Compile Board Target
+        env:
+          CLEAN: ${{ inputs.clean_cache }}
+          BOARD_ENV: ${{ matrix.board }}
         run: |
-          if [ "${{ inputs.clean_cache }}" = "true" ]; then
-            pio run -t clean -e ${{ matrix.board }}
+          if [ "$CLEAN" = "true" ]; then
+            pio run -t clean -e "$BOARD_ENV"
           fi
-          pio run -e ${{ matrix.board }}
+          pio run -e "$BOARD_ENV"
 
       - name: Package Binaries, Merge Factory Image & Compute SHA-256
         shell: bash
+        env:
+          TAG: ${{ inputs.tag_name }}
+          BOARD_ENV: ${{ matrix.board }}
         run: |
           set -euo pipefail
-          TAG="${{ inputs.tag_name }}"
-          ENV="${{ matrix.board }}"
-          BUILD_DIR=".pio/build/$ENV"
+          BUILD_DIR=".pio/build/${BOARD_ENV}"
           mkdir -p out
 
-          # Classic ESP32 uses 0x1000 for bootloader; ESP32-S3 uses 0x0000
-          if [[ "$ENV" == "esp32-cyd-28" \vert{}\vert{} "$ENV" == "esp32doit-devkit-v1" ]]; then
-            CHIP="esp32"
-            BOOT_OFFSET="0x1000"
-          else
-            CHIP="esp32s3"
-            BOOT_OFFSET="0x0000"
-          fi
+          case "${BOARD_ENV}" in
+            esp32-cyd-28|esp32doit-devkit-v1)
+              CHIP="esp32"
+              BOOT_OFFSET="0x1000"
+              ;;
+            *)
+              CHIP="esp32s3"
+              BOOT_OFFSET="0x0000"
+              ;;
+          esac
 
-          FACTORY_FILE="KryonOS-${TAG}-${ENV}-factory-0x0000.bin"
-          APP_FILE="KryonOS-${TAG}-${ENV}-firmware-0x10000.bin"
-          PART_FILE="KryonOS-${TAG}-${ENV}-partitions-0x8000.bin"
-          BOOT_FILE="KryonOS-${TAG}-${ENV}-bootloader-${BOOT_OFFSET}.bin"
+          FACTORY_FILE="KryonOS-${TAG}-${BOARD_ENV}-factory-0x0000.bin"
+          APP_FILE="KryonOS-${TAG}-${BOARD_ENV}-firmware-0x10000.bin"
+          PART_FILE="KryonOS-${TAG}-${BOARD_ENV}-partitions-0x8000.bin"
+          BOOT_FILE="KryonOS-${TAG}-${BOARD_ENV}-bootloader-${BOOT_OFFSET}.bin"
 
-          # Copy individual component binaries
-          cp "$BUILD_DIR/firmware.bin" "out/$APP_FILE"
-          cp "$BUILD_DIR/partitions.bin" "out/$PART_FILE"
-          cp "$BUILD_DIR/bootloader.bin" "out/$BOOT_FILE"
+          cp "${BUILD_DIR}/firmware.bin" "out/${APP_FILE}"
+          cp "${BUILD_DIR}/partitions.bin" "out/${PART_FILE}"
+          cp "${BUILD_DIR}/bootloader.bin" "out/${BOOT_FILE}"
 
-          # Merge into a single 0x0000 factory binary using esptool
-          python -m esptool --chip "$CHIP" merge_bin \
-            -o "out/$FACTORY_FILE" \
-            "$BOOT_OFFSET" "out/$BOOT_FILE" \
-            0x8000 "out/$PART_FILE" \
-            0x10000 "out/$APP_FILE"
+          python3 -m esptool --chip "${CHIP}" merge_bin \
+            -o "out/${FACTORY_FILE}" \
+            "${BOOT_OFFSET}" "out/${BOOT_FILE}" \
+            0x8000 "out/${PART_FILE}" \
+            0x10000 "out/${APP_FILE}"
 
-          # Compute SHA-256 hashes
-          FACTORY_HASH=$(sha256sum "out/$FACTORY_FILE" | awk '{print $1}')
-          APP_HASH=$(sha256sum "out/$APP_FILE" | awk '{print $1}')
-          PART_HASH=$(sha256sum "out/$PART_FILE" | awk '{print $1}')
-          BOOT_HASH=$(sha256sum "out/$BOOT_FILE" | awk '{print $1}')
+          FACTORY_HASH=$(sha256sum "out/${FACTORY_FILE}" | awk '{print $1}')
+          APP_HASH=$(sha256sum "out/${APP_FILE}" | awk '{print $1}')
+          PART_HASH=$(sha256sum "out/${PART_FILE}" | awk '{print $1}')
+          BOOT_HASH=$(sha256sum "out/${BOOT_FILE}" | awk '{print $1}')
 
-          # Save factory table row
-          echo "| **$ENV** | \`$FACTORY_FILE\` | \`0x0000\` | \`$FACTORY_HASH\` |" > "out/${ENV}.factory_row"
+          echo "| **${BOARD_ENV}** | \`${FACTORY_FILE}\` | \`0x0000\` | \`${FACTORY_HASH}\` |" > "out/${BOARD_ENV}.factory_row"
 
-          # Save component table rows
           {
-            echo "| **$ENV** | \`$APP_FILE\` | \`0x10000\` | Application (OTA) | \`$APP_HASH\` |"
-            echo "| **$ENV** | \`$PART_FILE\` | \`0x8000\` | Partition Table | \`$PART_HASH\` |"
-            echo "| **$ENV** | \`$BOOT_FILE\` | \`$BOOT_OFFSET\` | Bootloader | \`$BOOT_HASH\` |"
-          } > "out/${ENV}.component_row"
+            echo "| **${BOARD_ENV}** | \`${APP_FILE}\` | \`0x10000\` | Application (OTA) | \`${APP_HASH}\` |"
+            echo "| **${BOARD_ENV}** | \`${PART_FILE}\` | \`0x8000\` | Partition Table | \`${PART_HASH}\` |"
+            echo "| **${BOARD_ENV}** | \`${BOOT_FILE}\` | \`${BOOT_OFFSET}\` | Bootloader | \`${BOOT_HASH}\` |"
+          } > "out/${BOARD_ENV}.component_row"
 
       - name: Upload Board Artifacts
         uses: actions/upload-artifact@v7
@@ -130,9 +128,6 @@ jobs:
           path: out/*
           retention-days: 1
 
-  # =========================================================================
-  # JOB 2: Assemble Flashing Tables & Create Unpublished Draft Release
-  # =========================================================================
   draft-release:
     name: Create GitHub Draft Release
     needs: build
@@ -166,7 +161,7 @@ jobs:
             echo ""
             echo "| Board Target | Factory Binary File | Flash Offset | SHA-256 Checksum |"
             echo "| :--- | :--- | :--- | :--- |"
-            for f in $(ls release_files/*.factory_row | sort); do
+            for f in release_files/*.factory_row; do
               cat "$f"
             done
             echo ""
@@ -176,14 +171,13 @@ jobs:
             echo ""
             echo "| Board Target | File Name | Flash Offset | Role | SHA-256 Checksum |"
             echo "| :--- | :--- | :--- | :--- | :--- |"
-            for f in $(ls release_files/*.component_row | sort); do
+            for f in release_files/*.component_row; do
               cat "$f"
             done
           } > "$NOTES"
 
           rm -f release_files/*.factory_row release_files/*.component_row
 
-          # Create or update the unpublished Draft Release using GitHub's native CLI
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" release_files/*.bin --clobber
             gh release edit "$TAG" --title "$TITLE" --notes-file "$NOTES" --draft
