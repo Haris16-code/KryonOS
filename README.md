@@ -419,6 +419,12 @@ Areas where contributions are especially useful include:
 <p>&rarr; <a href="https://github.com/Haris16-code/KryonOS">Star KryonOS on GitHub</a></p>
 
 <hr>
+<h2>Contact Us</h2>
 
+<p>
+  For sponsorships and technical support, contact us at
+  <a href="mailto:kryonos@harislab.tech"><strong>kryonos@harislab.tech</strong></a>.
+</p>
+<hr>
 <h2>License</h2>
 <p>KryonOS is licensed under the <a href="./LICENSE">GNU General Public License v3.0</a>.</p>
