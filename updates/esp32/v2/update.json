@@ -1,9 +1,9 @@
 {
   "release": {
-    "version": "2.0.0",
+    "version": "2.0.1",
     "api_version": 2,
-    "type": "major",
-    "changelog": "- KryonCloud Services & JS AI Engine\n- Multi-Board HAL Support (Cardputer, T-HMI, CYD)\n- High-Speed SD Multi-Bus Mount\n- Anti-rollback wireless OTA"
+    "type": "patch",
+    "changelog": "- Security Hardening, Permissions & Runtime Improvements"
   },
   "boards": {
     "esp32-s3-devkitc-1-n16r8": {
@@ -11,37 +11,35 @@
       "type": "patch",
       "changelog": "- Fixed Octal PSRAM timing glitch on S3 DevKitC-1\n- Optimized USB-CDC serial throughput",
       "supports_ota": true,
-      "firmware_url": "",
-      "firmware_size": 1681280,
-      "firmware_md5": ""
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-esp32-s3-devkitc-1-n16r8-firmware-0x10000.bin",
+      "firmware_size": 1754896,
+      "firmware_md5": "df42e54f43c03d2339bf9759e97a1143"
     },
     "m5stack-cardputer": {
       "version": "2.0.0",
       "type": "major",
       "changelog": "- 56-Key physical matrix keyboard support\n- ST7789V2 240x135 SPI display driver\n- Stamp-S3 battery voltage monitoring",
       "supports_ota": true,
-      "firmware_url": "",
-      "firmware_size": 1548000,
-      "firmware_md5": ""
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-m5stack-cardputer-firmware-0x10000.bin",
+      "firmware_size": 1738880,
+      "firmware_md5": "c649ca8bb5c1fc642b7df508a8e11897"
     },
     "lilygo-t-hmi": {
       "version": "2.0.0",
       "type": "major",
       "changelog": "- 8-bit parallel ST7789 display driver\n- SD_MMC high-speed card mount\n- XPT2046 touch digitizer driver",
       "supports_ota": true,
-      "firmware_url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/t_hmi/firmware.bin",
-      "firmware_size": 1620000,
-      "firmware_md5": "b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5"
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-lilygo-t-hmi-firmware-0x10000.bin",
+      "firmware_size": 1750608,
+      "firmware_md5": "be57b1ef355ee2c1de6dd8acc2f86d65"
     },
     "esp32-cyd-28": {
-      "supports_ota": true,
-      "firmware_url": "https://raw.githubusercontent.com/Haris16-code/KryonOS/refs/heads/main/updates/cyd28/firmware.bin",
-      "firmware_size": 1450200,
-      "firmware_md5": "e5f6a1b2c3d4567890abcdef12345678"
+      "supports_ota": false,
+      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher."
     },
     "esp32doit-devkit-v1": {
       "supports_ota": false,
-      "guide": "Flash via Web Flasher:\nkryonos.harislab.tech/flasher"
+      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher."
     }
   }
 }
