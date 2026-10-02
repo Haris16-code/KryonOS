@@ -7,27 +7,27 @@
   },
   "boards": {
     "esp32-s3-devkitc-1-n16r8": {
-      "version": "2.0.0",
+      "version": "2.0.1",
       "type": "patch",
-      "changelog": "- Fixed Octal PSRAM timing glitch on S3 DevKitC-1\n- Optimized USB-CDC serial throughput",
+      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
       "supports_ota": true,
       "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-esp32-s3-devkitc-1-n16r8-firmware-0x10000.bin",
       "firmware_size": 1754896,
       "firmware_md5": "df42e54f43c03d2339bf9759e97a1143"
     },
     "m5stack-cardputer": {
-      "version": "2.0.0",
-      "type": "major",
-      "changelog": "- 56-Key physical matrix keyboard support\n- ST7789V2 240x135 SPI display driver\n- Stamp-S3 battery voltage monitoring",
+      "version": "2.0.1",
+      "type": "patch",
+      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
       "supports_ota": true,
       "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-m5stack-cardputer-firmware-0x10000.bin",
       "firmware_size": 1738880,
       "firmware_md5": "c649ca8bb5c1fc642b7df508a8e11897"
     },
     "lilygo-t-hmi": {
-      "version": "2.0.0",
-      "type": "major",
-      "changelog": "- 8-bit parallel ST7789 display driver\n- SD_MMC high-speed card mount\n- XPT2046 touch digitizer driver",
+      "version": "2.0.1",
+      "type": "patch",
+      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
       "supports_ota": true,
       "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-lilygo-t-hmi-firmware-0x10000.bin",
       "firmware_size": 1750608,
@@ -35,11 +35,17 @@
     },
     "esp32-cyd-28": {
       "supports_ota": false,
-      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher."
+      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher.",
+      "version": "2.0.1",
+      "type": "patch",
+      "changelog": "- Security Hardening, Permissions & Runtime Improvements"
     },
     "esp32doit-devkit-v1": {
       "supports_ota": false,
-      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher."
+      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher.",
+      "version": "2.0.1",
+      "type": "patch",
+      "changelog": "- Security Hardening, Permissions & Runtime Improvements"
     }
   }
 }
