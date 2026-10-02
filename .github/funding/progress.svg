@@ -1,10 +1,10 @@
-<svg width="400" height="28" viewBox="0 0 400 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="0 percent funding progress">
+<svg width="400" height="28" viewBox="0 0 400 28" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="2 percent funding progress">
   <defs>
     <clipPath id="pill-clip">
       <rect x="0" y="2" width="400" height="24" rx="12"/>
     </clipPath>
   </defs>
   <rect x="0" y="2" width="400" height="24" rx="12" fill="#2d3748"/>
-  <rect x="0" y="2" width="0" height="24" fill="#22c55e" clip-path="url(#pill-clip)"/>
-  <text x="200" y="19" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#ffffff">0%</text>
+  <rect x="0" y="2" width="8" height="24" fill="#22c55e" clip-path="url(#pill-clip)"/>
+  <text x="200" y="19" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="bold" fill="#ffffff">2%</text>
 </svg>

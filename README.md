@@ -35,19 +35,19 @@
 </p>
 <p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src="https://img.shields.io/badge/Raised-$0-22c55e?style=for-the-badge&logo=cashapp&logoColor=white" alt="Raised $0" />
+    <img src="https://img.shields.io/badge/Raised-$5-22c55e?style=for-the-badge&logo=cashapp&logoColor=white" alt="Raised $5" />
   </a>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
     <img src="https://img.shields.io/badge/Goal-$200-0284c7?style=for-the-badge&logo=target&logoColor=white" alt="Funding Goal $200" />
   </a>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src="https://img.shields.io/badge/Progress-0%25-ea580c?style=for-the-badge" alt="Funding Progress 0%" />
+    <img src="https://img.shields.io/badge/Progress-2%25-ea580c?style=for-the-badge" alt="Funding Progress 2%" />
   </a>
 </p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0"><img src="https://img.shields.io/badge/Support_KryonOS-Pay_As_You_Want-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
 <p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
+    <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 2%" />
   </a>
 </p>
 <p>
