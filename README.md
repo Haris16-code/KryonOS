@@ -41,13 +41,13 @@
     <img src="https://img.shields.io/badge/Goal-$100-0284c7?style=for-the-badge&logo=target&logoColor=white" alt="Funding Goal $100" />
   </a>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src="https://img.shields.io/badge/Progress-2%25-ea580c?style=for-the-badge" alt="Funding Progress 2%" />
+    <img src="https://img.shields.io/badge/Progress-5%25-ea580c?style=for-the-badge" alt="Funding Progress 5%" />
   </a>
 </p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0"><img src="https://img.shields.io/badge/Support_KryonOS-Pay_As_You_Want-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
 <p>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 2%" />
+    <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 5%" />
   </a>
 </p>
 <p>
