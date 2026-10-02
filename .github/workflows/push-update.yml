@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       target_board:
-        description: 'Target Scope (Select "all" for global release, or a specific board override)'
+        description: 'Target Scope ("all" updates global release + all boards, or pick a single board)'
         required: true
         type: choice
         default: 'all'
@@ -28,10 +28,10 @@ on:
           - 'security'
 
       changelog:
-        description: 'Changelog (Use \n or | to separate bullet points, e.g. "- Fix A\n- Fix B")'
+        description: 'Changelog (Leave as "auto" to extract from Release Title after "-" or "—", or type custom bullets separated by \n)'
         required: true
         type: string
-        default: '- Bug fixes and system stability improvements'
+        default: 'auto'
 
       version_override:
         description: 'Version (Leave as "auto" to read KRYONOS_VERSION from platformio.ini)'
@@ -51,14 +51,11 @@ on:
         type: string
         default: 'latest'
 
-      url_mode:
-        description: 'Firmware URL Mode (raw_repo commits bins to updates/ folder; release_asset links to Release)'
+      unsupported_ota_guide:
+        description: 'Guide message for boards with OTA disabled (supports_ota: false)'
         required: true
-        type: choice
-        default: 'raw_repo'
-        options:
-          - 'raw_repo'
-          - 'release_asset'
+        type: string
+        default: 'Flash via Web Flasher:\nkryonos.harislab.tech/flasher'
 
       ota_s3_devkit:
         description: '[OTA Toggle] Enable OTA for esp32-s3-devkitc-1-n16r8?'
@@ -114,14 +111,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
-          BRANCH: ${{ github.ref_name }}
           TARGET_BOARD: ${{ inputs.target_board }}
           UPDATE_TYPE: ${{ inputs.update_type }}
           CHANGELOG_RAW: ${{ inputs.changelog }}
           VERSION_IN: ${{ inputs.version_override }}
           API_LEVEL_IN: ${{ inputs.api_level_override }}
           RELEASE_TAG_IN: ${{ inputs.release_tag }}
-          URL_MODE: ${{ inputs.url_mode }}
+          UNSUPPORTED_GUIDE: ${{ inputs.unsupported_ota_guide }}
           OTA_S3: ${{ inputs.ota_s3_devkit }}
           OTA_CARDPUTER: ${{ inputs.ota_cardputer }}
           OTA_THMI: ${{ inputs.ota_t_hmi }}
@@ -130,39 +126,58 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 1. Resolve Release Tag (Published or Draft)
+          # 1. Resolve Release Tag & Title (Published or Draft)
           if [ "$RELEASE_TAG_IN" = "latest" ]; then
-            TAG=$(gh api "repos/${REPO}/releases" --jq '.[0].tag_name // empty')
+            export TAG=$(gh api "repos/${REPO}/releases" --jq '.[0].tag_name // empty')
+            export RELEASE_TITLE=$(gh api "repos/${REPO}/releases" --jq '.[0].name // empty')
             if [ -z "$TAG" ]; then
               echo "::error title=No Releases Found::No GitHub release found in ${REPO}. Run the release workflow first."
               exit 1
             fi
           else
-            TAG="$RELEASE_TAG_IN"
+            export TAG="$RELEASE_TAG_IN"
+            export RELEASE_TITLE=$(gh api "repos/${REPO}/releases" --jq ".[] | select(.tag_name == \"${TAG}\") | .name" | head -n 1 || true)
           fi
-          echo "Using Release Tag: $TAG"
 
-          # 2. Download *-firmware-0x10000.bin assets from the release
+          echo "Using Release Tag: $TAG"
+          echo "Using Release Title: $RELEASE_TITLE"
+
+          # 2. Download *-firmware-0x10000.bin assets from the release to compute size & MD5
           mkdir -p release_bins
           gh release download "$TAG" --pattern "*-firmware-0x10000.bin" --dir release_bins --clobber
 
           # 3. Parse platformio.ini, compute MD5/Size, and update updates/esp32/v2/update.json
           python3 - << 'EOF'
-          import os, re, json, hashlib, shutil
+          import os, re, json, hashlib
           from pathlib import Path
 
           repo = os.environ["REPO"]
-          branch = os.environ["BRANCH"]
           target_board = os.environ["TARGET_BOARD"]
           update_type = os.environ["UPDATE_TYPE"]
-          changelog_raw = os.environ["CHANGELOG_RAW"]
+          changelog_raw = os.environ["CHANGELOG_RAW"].strip()
           version_in = os.environ["VERSION_IN"].strip()
           api_in = os.environ["API_LEVEL_IN"].strip()
           tag = os.environ["TAG"].strip()
-          url_mode = os.environ["URL_MODE"].strip()
+          release_title = os.environ.get("RELEASE_TITLE", "").strip()
+          guide_raw = os.environ["UNSUPPORTED_GUIDE"].strip()
 
-          # Normalize changelog newlines (supports literal \n or | separator)
-          changelog = changelog_raw.replace("\\n", "\n").replace(" | ", "\n")
+          # Normalize guide newlines
+          guide_text = guide_raw.replace("\\n", "\n").replace(" | ", "\n")
+
+          # Auto-extract Changelog from Release Title after '-', '–', or '—' if set to 'auto'
+          if changelog_raw.lower() == "auto" or not changelog_raw:
+              parts = re.split(r'\s*[-–—]\s*', release_title, maxsplit=1)
+              if len(parts) > 1 and parts[1].strip():
+                  extracted = parts[1].strip().replace("\\n", "\n").replace(" | ", "\n")
+                  lines = [
+                      line.strip() if line.strip().startswith("-") else f"- {line.strip()}"
+                      for line in extracted.split("\n") if line.strip()
+                  ]
+                  changelog = "\n".join(lines)
+              else:
+                  changelog = f"- {release_title}" if release_title else f"- KryonOS {tag} Update"
+          else:
+              changelog = changelog_raw.replace("\\n", "\n").replace(" | ", "\n")
 
           # Auto-extract KRYONOS_VERSION and KRYONOS_API_LEVEL from platformio.ini
           pio_text = Path("platformio.ini").read_text(encoding="utf-8") if Path("platformio.ini").exists() else ""
@@ -176,7 +191,8 @@ jobs:
           final_version = detected_version if version_in.lower() == "auto" or not version_in else version_in.lstrip('v')
           final_api = detected_api if api_in.lower() == "auto" or not api_in else int(api_in)
 
-          print(f"Resolved Version: {final_version} | Resolved API Level: {final_api}")
+          print(f"Resolved Version: {final_version} | API Level: {final_api}")
+          print(f"Resolved Changelog:\n{changelog}")
 
           ota_flags = {
               "esp32-s3-devkitc-1-n16r8": os.environ["OTA_S3"].lower() == "true",
@@ -184,15 +200,6 @@ jobs:
               "lilygo-t-hmi": os.environ["OTA_THMI"].lower() == "true",
               "esp32-cyd-28": os.environ["OTA_CYD"].lower() == "true",
               "esp32doit-devkit-v1": os.environ["OTA_DEVKIT"].lower() == "true",
-          }
-
-          # Folder mapping for raw.githubusercontent.com URLs
-          raw_folders = {
-              "esp32-s3-devkitc-1-n16r8": "esp32s3",
-              "m5stack-cardputer": "cardputer",
-              "lilygo-t-hmi": "t_hmi",
-              "esp32-cyd-28": "cyd28",
-              "esp32doit-devkit-v1": "devkit_v1",
           }
 
           manifest_path = Path("updates/esp32/v2/update.json")
@@ -253,27 +260,17 @@ jobs:
               board_entry["supports_ota"] = supports_ota
 
               if not supports_ota:
-                  # Clean OTA fields if OTA is disabled (e.g., esp32doit-devkit-v1)
-                  if b == "esp32doit-devkit-v1" and "guide" not in board_entry:
-                      board_entry["guide"] = "Flash via Web Flasher:\nkryonos.harislab.tech/flasher"
+                  board_entry["guide"] = guide_text
                   board_entry.pop("firmware_url", None)
                   board_entry.pop("firmware_size", None)
                   board_entry.pop("firmware_md5", None)
               else:
+                  board_entry.pop("guide", None)
                   if bin_file and bin_file.exists():
                       raw_bytes = bin_file.read_bytes()
                       f_size = len(raw_bytes)
                       f_md5 = hashlib.md5(raw_bytes).hexdigest()
-
-                      if url_mode == "raw_repo":
-                          sub_dir = raw_folders[b]
-                          dest_dir = Path(f"updates/{sub_dir}")
-                          dest_dir.mkdir(parents=True, exist_ok=True)
-                          dest_bin = dest_dir / "firmware.bin"
-                          shutil.copy2(bin_file, dest_bin)
-                          f_url = f"https://raw.githubusercontent.com/{repo}/refs/heads/{branch}/updates/{sub_dir}/firmware.bin"
-                      else:
-                          f_url = f"https://github.com/{repo}/releases/download/{tag}/{bin_file.name}"
+                      f_url = f"https://github.com/{repo}/releases/download/{tag}/{bin_file.name}"
 
                       board_entry["firmware_url"] = f_url
                       board_entry["firmware_size"] = f_size
@@ -293,15 +290,14 @@ jobs:
         shell: bash
         env:
           TARGET_BOARD: ${{ inputs.target_board }}
-          VERSION_IN: ${{ inputs.version_override }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          git add updates/
+          git add updates/esp32/v2/update.json
           if git diff --staged --quiet; then
-            echo "No changes detected in updates/ folder."
+            echo "No changes detected in updates/esp32/v2/update.json."
           else
             git commit -m "chore(ota): update OTA manifest for ${TARGET_BOARD}"
             git push
