@@ -251,12 +251,10 @@ jobs:
                   matches = list(Path("release_bins").glob(f"*{b}*-firmware-0x10000.bin"))
                   bin_file = matches[0] if matches else None
 
-              # If targeting a specific board, set per-board overrides
-              if target_board == b:
-                  board_entry["version"] = final_version
-                  board_entry["type"] = update_type
-                  board_entry["changelog"] = changelog
-
+              # Always replace version, type, and changelog for every processed board (both 'all' and single board)
+              board_entry["version"] = final_version
+              board_entry["type"] = update_type
+              board_entry["changelog"] = changelog
               board_entry["supports_ota"] = supports_ota
 
               if not supports_ota:
