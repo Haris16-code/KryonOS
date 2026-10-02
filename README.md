@@ -38,7 +38,7 @@
     <img src="https://img.shields.io/badge/Raised-$5-22c55e?style=for-the-badge&logo=cashapp&logoColor=white" alt="Raised $5" />
   </a>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
-    <img src="https://img.shields.io/badge/Goal-$200-0284c7?style=for-the-badge&logo=target&logoColor=white" alt="Funding Goal $200" />
+    <img src="https://img.shields.io/badge/Goal-$100-0284c7?style=for-the-badge&logo=target&logoColor=white" alt="Funding Goal $100" />
   </a>
   <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
     <img src="https://img.shields.io/badge/Progress-2%25-ea580c?style=for-the-badge" alt="Funding Progress 2%" />
@@ -423,7 +423,7 @@ Areas where contributions are especially useful include:
 
 <p>
   For sponsorships and technical support, contact us at
-  <a href="mailto:kryonos@harislab.tech"><strong>kryonos@harislab.tech</strong></a>.
+  <a href="mailto:kryonos@harislab.tech"><strong>kryonos@harislab.tech</strong></a>
 </p>
 <hr>
 <h2>License</h2>
