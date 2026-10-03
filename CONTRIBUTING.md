@@ -27,10 +27,40 @@
 <ul>
   <li>Review the project documentation and existing architecture.</li>
   <li>Make sure your changes are compatible with the existing KryonOS architecture.</li>
+  <li>Keep your changes focused and avoid unrelated modifications.</li>
   <li>Test your changes as thoroughly as possible before submitting a pull request.</li>
+  <li>Give each commit a clear and meaningful summary describing the change.</li>
+  <li>When practical, organize commits so that each commit represents a clear and understandable change.</li>
   <li>Clearly describe what your pull request changes and why the changes are needed.</li>
   <li>For hardware-related changes, provide details about the hardware and testing performed.</li>
 </ul>
+
+<h2>Project Architecture</h2>
+
+<p>
+  KryonOS has an established architecture and development environment.
+  Contributions should integrate with the existing framework rather than
+  replacing or restructuring the core architecture.
+</p>
+
+<p>
+  KryonOS currently uses <strong>PlatformIO</strong> as its development and
+  build platform and the <strong>Arduino framework</strong> as its firmware
+  framework.
+</p>
+
+<p>
+  Do not migrate or replace the Arduino framework with another framework,
+  or migrate the project from PlatformIO to another development platform
+  such as ESP-IDF, unless the change has been discussed with and approved
+  by the maintainers beforehand.
+</p>
+
+<p>
+  Hardware support, display drivers, touch drivers, resolution handling,
+  and other hardware-related improvements should be implemented within
+  the existing KryonOS architecture and framework.
+</p>
 
 <h2>AI-Assisted Contributions</h2>
 
@@ -76,6 +106,18 @@
   Once your changes are ready, open a pull request for the KryonOS repository.
   Please provide enough information for maintainers to understand, test, and review your changes.
 </p>
+
+<p>A pull request should include, when applicable:</p>
+
+<ul>
+  <li>A clear description of the changes.</li>
+  <li>The reason the changes are needed.</li>
+  <li>The hardware used for testing.</li>
+  <li>Testing results and any relevant observations.</li>
+  <li>Known limitations or issues.</li>
+  <li>Screenshots, logs, or other evidence when useful.</li>
+</ul>
+
 <p>
   Thank you for helping improve KryonOS and expand its hardware, software,
   and developer ecosystem.
