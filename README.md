@@ -13,7 +13,8 @@
 <p align="center">
   <a href="https://github.com/Haris16-code/KryonOS/releases"><img src="https://img.shields.io/github/v/release/Haris16-code/KryonOS?style=for-the-badge&logo=github" alt="Latest Release" /></a>
   <a href="https://github.com/Haris16-code/KryonOS/stargazers"><img src="https://img.shields.io/github/stars/Haris16-code/KryonOS?style=for-the-badge&logo=github" alt="GitHub Stars" /></a>
-  <a href="https://github.com/Haris16-code/KryonOS/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Haris16-code/KryonOS?style=for-the-badge" alt="License" /></a>
+  <a href="https://github.com/Haris16-code/KryonOS/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue?style=for-the-badge" alt="GPL-3.0 license" /></a>
+
 </p>
 
 <p>
