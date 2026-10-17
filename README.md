@@ -373,14 +373,16 @@ pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
 Have a question, found a bug, want to contribute, or want to discuss a new feature?
 Join the KryonOS community.
 </p>
-
 <p>
-  <a href="https://github.com/Haris16-code/KryonOS/discussions">GitHub Discussions</a>
+  <a href="https://github.com/Haris16-code/KryonOS/discussions">GitHub Discussions</a> 
   •
   <a href="https://github.com/Haris16-code/KryonOS/issues">Issues</a>
   •
   <a href="https://github.com/Haris16-code/KryonOS/pulls">Pull Requests</a>
 </p>
+<a href="https://discord.gg/kFvctGJy93" target="_blank" rel="noopener noreferrer">
+  <img src="https://img.shields.io/badge/chat-on%20discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord">
+</a>
 <hr>
 <h2>Contributing</h2>
 
