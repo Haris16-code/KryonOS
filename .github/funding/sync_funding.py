@@ -2,53 +2,65 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
-API_KEY = os.environ.get("LEMONSQUEEZY_API_KEY")
-PRODUCT_ID = os.environ.get("LEMONSQUEEZY_PRODUCT_ID")
+ACCESS_TOKEN = os.environ.get("PATREON_ACCESS_TOKEN")
+CAMPAIGN_ID = os.environ.get("PATREON_CAMPAIGN_ID")
 
 README_PATH = Path("README.md")
 SVG_OUTPUT_PATH = Path(".github/funding/progress.svg")
 
-if not API_KEY or not PRODUCT_ID:
-    print("Error: LEMONSQUEEZY_API_KEY and LEMONSQUEEZY_PRODUCT_ID must be set.")
+if not ACCESS_TOKEN:
+    print("Error: PATREON_ACCESS_TOKEN must be set.")
     sys.exit(1)
 
 
-def fetch_product_revenue_usd(api_key: str, target_product_id: str) -> float:
-    """Fetches all paid orders from Lemon Squeezy and sums net USD revenue for the product."""
-    url = "https://api.lemonsqueezy.com/v1/orders?page[size]=100"
+def fetch_patreon_pledge_revenue_usd(access_token: str, target_campaign_id: str | None = None) -> float:
+    """Fetches campaign details from Patreon API v2 and returns pledge_sum in USD."""
+    query = urllib.parse.urlencode({"fields[campaign]": "pledge_sum,patron_count"})
+    url = f"https://www.patreon.com/api/oauth2/v2/campaigns?{query}"
     headers = {
-        "Accept": "application/vnd.api+json",
-        "Content-Type": "application/vnd.api+json",
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {access_token.strip()}",
         "User-Agent": "GitHub-Funding-Sync/1.0",
     }
 
-    total_cents = 0
-    target_id_str = str(target_product_id).strip()
-
-    while url:
-        req = urllib.request.Request(url, headers=headers)
+    req = urllib.request.Request(url, headers=headers)
+    try:
         with urllib.request.urlopen(req, timeout=20) as response:
             payload = json.loads(response.read().decode("utf-8"))
+    except urllib.error.HTTPError as err:
+        print(f"Patreon API HTTP error {err.code}: {err.read().decode('utf-8', errors='ignore')}")
+        sys.exit(1)
+    except Exception as err:
+        print(f"Network error querying Patreon API: {err}")
+        sys.exit(1)
 
-        for order in payload.get("data", []):
-            attrs = order.get("attributes", {})
-            status = attrs.get("status")
-            first_item = attrs.get("first_order_item") or {}
-            prod_id = str(first_item.get("product_id", ""))
+    campaigns = payload.get("data", [])
+    if not campaigns:
+        print("Error: No Patreon campaigns found for this account/token.")
+        sys.exit(1)
 
-            if status == "paid" and prod_id == target_id_str:
-                subtotal_cents = attrs.get("subtotal_usd", 0)
-                refunded_cents = attrs.get("refunded_amount_usd", 0)
-                net_cents = max(0, subtotal_cents - refunded_cents)
-                total_cents += net_cents
+    selected_campaign = None
+    target_id_str = str(target_campaign_id).strip() if target_campaign_id else ""
 
-        url = payload.get("links", {}).get("next")
+    if target_id_str:
+        for camp in campaigns:
+            if str(camp.get("id")) == target_id_str:
+                selected_campaign = camp
+                break
+        if not selected_campaign:
+            print(f"Error: Campaign ID '{target_id_str}' not found in returned Patreon campaigns.")
+            sys.exit(1)
+    else:
+        # Default to the primary/first campaign
+        selected_campaign = campaigns[0]
 
-    return total_cents / 100.0
+    attrs = selected_campaign.get("attributes", {})
+    # Patreon pledge_sum is represented in USD cents
+    pledge_sum_cents = attrs.get("pledge_sum", 0)
+    return pledge_sum_cents / 100.0
 
 
 def format_amount(val: float) -> str:
@@ -90,9 +102,9 @@ def main():
 
     content = README_PATH.read_text(encoding="utf-8")
 
-    # 1. Isolate the funding section in README.md
+    # 1. Isolate the funding section in README.md (supports PATREON or LEMON-SQUEEZY tags)
     block_pattern = re.compile(
-        r"(<!-- LEMON-SQUEEZY-START -->)(.*?)(<!-- LEMON-SQUEEZY-END -->)",
+        r"(<!-- (?:PATREON|LEMON-SQUEEZY)-START -->)(.*?)(<!-- (?:PATREON|LEMON-SQUEEZY)-END -->)",
         re.DOTALL,
     )
     match = block_pattern.search(content)
@@ -106,8 +118,8 @@ def main():
 
     goal_usd = float(goal_match.group(1))
 
-    # 3. Fetch paid product revenue from Lemon Squeezy
-    raised_usd = fetch_product_revenue_usd(API_KEY, PRODUCT_ID)
+    # 3. Fetch monthly pledge revenue from Patreon API
+    raised_usd = fetch_patreon_pledge_revenue_usd(ACCESS_TOKEN, CAMPAIGN_ID)
 
     # 4. Calculate percentage, completion state, and SVG fill width (max 400px)
     raw_pct = (raised_usd / goal_usd * 100) if goal_usd > 0 else 0
