@@ -35,19 +35,19 @@
   Help support KryonOS development by contributing toward the hardware, boards, and resources needed for development, testing, and official board support.
 </p>
 <p>
-  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+  <a href="https://patreon.com/KryonOS">
     <img src="https://img.shields.io/badge/Raised-$0-22c55e?style=for-the-badge&logo=cashapp&logoColor=white" alt="Raised $0" />
   </a>
-  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+  <a href="https://patreon.com/KryonOS">
     <img src="https://img.shields.io/badge/Goal-$100-0284c7?style=for-the-badge&logo=target&logoColor=white" alt="Funding Goal $100" />
   </a>
-  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+  <a href="https://patreon.com/KryonOS">
     <img src="https://img.shields.io/badge/Progress-0%25-ea580c?style=for-the-badge" alt="Funding Progress 0%" />
   </a>
 </p>
-  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0"><img src="https://img.shields.io/badge/Support_KryonOS-Pay_As_You_Want-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
+  <a href="https://patreon.com/KryonOS"><img src="https://img.shields.io/badge/Support_KryonOS-Pay_As_You_Want-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
 <p>
-  <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">
+  <a href="https://patreon.com/KryonOS">
     <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
   </a>
 </p>
@@ -409,7 +409,7 @@ Areas where contributions are especially useful include:
 <h2>Support KryonOS</h2>
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
 <p>Due to budget constraints, experimental board ports (Cardputer, T-HMI, CYD) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
-<p>&rarr; <a href="https://harislab.lemonsqueezy.com/checkout/buy/9b37ee2c-e26a-4626-990f-f18834916276?logo=0">Support KryonOS Development</a></p>
+<p>&rarr; <a href="https://patreon.com/KryonOS">Support KryonOS Development</a></p>
 
 <hr>
 <h2>Stay Updated: Firmware Releases &amp; Development News</h2>
