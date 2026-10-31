@@ -18,49 +18,66 @@ if not ACCESS_TOKEN:
 
 
 def fetch_patreon_pledge_revenue_usd(access_token: str, target_campaign_id: str | None = None) -> float:
-    """Fetches campaign details from Patreon API v2 and returns pledge_sum in USD."""
-    query = urllib.parse.urlencode({"fields[campaign]": "pledge_sum,patron_count"})
-    url = f"https://www.patreon.com/api/oauth2/v2/campaigns?{query}"
+    """Fetches active monthly pledge total using Patreon API v2 members endpoint."""
     headers = {
         "Authorization": f"Bearer {access_token.strip()}",
         "User-Agent": "GitHub-Funding-Sync/1.0",
     }
 
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=20) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as err:
-        print(f"Patreon API HTTP error {err.code}: {err.read().decode('utf-8', errors='ignore')}")
-        sys.exit(1)
-    except Exception as err:
-        print(f"Network error querying Patreon API: {err}")
-        sys.exit(1)
+    campaign_id = target_campaign_id.strip() if target_campaign_id else None
 
-    campaigns = payload.get("data", [])
-    if not campaigns:
-        print("Error: No Patreon campaigns found for this account/token.")
-        sys.exit(1)
-
-    selected_campaign = None
-    target_id_str = str(target_campaign_id).strip() if target_campaign_id else ""
-
-    if target_id_str:
-        for camp in campaigns:
-            if str(camp.get("id")) == target_id_str:
-                selected_campaign = camp
-                break
-        if not selected_campaign:
-            print(f"Error: Campaign ID '{target_id_str}' not found in returned Patreon campaigns.")
+    # 1. Resolve Campaign ID if not explicitly specified
+    if not campaign_id:
+        query = urllib.parse.urlencode({"fields[campaign]": "creation_name,patron_count"})
+        url = f"https://www.patreon.com/api/oauth2/v2/campaigns?{query}"
+        req = urllib.request.Request(url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            print(f"Patreon API HTTP error {err.code}: {err.read().decode('utf-8', errors='ignore')}")
             sys.exit(1)
-    else:
-        # Default to the primary/first campaign
-        selected_campaign = campaigns[0]
 
-    attrs = selected_campaign.get("attributes", {})
-    # Patreon pledge_sum is represented in USD cents
-    pledge_sum_cents = attrs.get("pledge_sum", 0)
-    return pledge_sum_cents / 100.0
+        campaigns = payload.get("data", [])
+        if not campaigns:
+            print("Error: No Patreon campaigns found for this account.")
+            sys.exit(1)
+        campaign_id = str(campaigns[0].get("id"))
+
+    # 2. Page through campaign members and sum monthly pledge amounts from active patrons
+    members_query = urllib.parse.urlencode({
+        "page[size]": "100",
+        "fields[member]": "currently_entitled_amount_cents,patron_status",
+    })
+    members_url = f"https://www.patreon.com/api/oauth2/v2/campaigns/{campaign_id}/members?{members_query}"
+
+    total_cents = 0
+
+    while members_url:
+        req = urllib.request.Request(members_url, headers=headers)
+        try:
+            with urllib.request.urlopen(req, timeout=20) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as err:
+            err_body = err.read().decode("utf-8", errors="ignore")
+            print(f"Patreon API HTTP error {err.code}: {err_body}")
+            if err.code == 403:
+                print(
+                    "\nTip: 403 Forbidden indicates your token is missing the 'campaigns.members' scope.\n"
+                    "In your Patreon Developer Portal client settings, ensure 'campaigns.members' is enabled."
+                )
+            sys.exit(1)
+
+        for member in payload.get("data", []):
+            attrs = member.get("attributes", {})
+            status = attrs.get("patron_status")
+            if status == "active_patron":
+                # currently_entitled_amount_cents reflects their active recurring pledge
+                total_cents += attrs.get("currently_entitled_amount_cents", 0)
+
+        members_url = payload.get("links", {}).get("next")
+
+    return total_cents / 100.0
 
 
 def format_amount(val: float) -> str:
@@ -69,7 +86,7 @@ def format_amount(val: float) -> str:
 
 
 def build_svg(progress_pct: int, bar_width: int, is_completed: bool) -> str:
-    """Generates the SVG progress bar and displays 'Goal Completed!' once reached."""
+    """Generates the SVG progress bar."""
     if is_completed:
         label_text = f"Goal Completed! ({progress_pct}%)"
         aria_text = f"Goal Completed at {progress_pct} percent funding progress"
@@ -102,7 +119,7 @@ def main():
 
     content = README_PATH.read_text(encoding="utf-8")
 
-    # 1. Isolate the funding section in README.md (supports PATREON or LEMON-SQUEEZY tags)
+    # 1. Isolate the funding section in README.md
     block_pattern = re.compile(
         r"(<!-- (?:PATREON|LEMON-SQUEEZY)-START -->)(.*?)(<!-- (?:PATREON|LEMON-SQUEEZY)-END -->)",
         re.DOTALL,
@@ -110,7 +127,7 @@ def main():
     match = block_pattern.search(content)
     target_section = match.group(2) if match else content
 
-    # 2. Extract the Goal amount from the Goal badge (e.g. Goal-$200)
+    # 2. Extract Goal from badge
     goal_match = re.search(r"badge/Goal-\$([0-9]+(?:\.[0-9]+)?)-", target_section)
     if not goal_match:
         print("Error: Could not find 'badge/Goal-$<number>-' in README.md")
@@ -118,10 +135,10 @@ def main():
 
     goal_usd = float(goal_match.group(1))
 
-    # 3. Fetch monthly pledge revenue from Patreon API
+    # 3. Fetch active pledge sum
     raised_usd = fetch_patreon_pledge_revenue_usd(ACCESS_TOKEN, CAMPAIGN_ID)
 
-    # 4. Calculate percentage, completion state, and SVG fill width (max 400px)
+    # 4. Calculate progress
     raw_pct = (raised_usd / goal_usd * 100) if goal_usd > 0 else 0
     progress_pct = int(round(raw_pct))
     is_completed = raised_usd >= goal_usd and goal_usd > 0
@@ -132,7 +149,7 @@ def main():
     raised_str = format_amount(raised_usd)
     goal_str = format_amount(goal_usd)
 
-    # 5. Build Progress badge URL & alt text based on completion status
+    # 5. Build badges
     if is_completed:
         progress_badge = f"badge/Progress-Goal_Completed!_({progress_pct}%25)-22c55e"
         progress_alt = f'alt="Funding Progress Goal Completed ({progress_pct}%)"'
@@ -140,7 +157,7 @@ def main():
         progress_badge = f"badge/Progress-{progress_pct}%25-ea580c"
         progress_alt = f'alt="Funding Progress {progress_pct}%"'
 
-    # 6. Update badges and alt attributes in README.md
+    # 6. Replace in README
     updated_section = re.sub(
         r"badge/Raised-\$[0-9.,]+-22c55e",
         f"badge/Raised-${raised_str}-22c55e",
@@ -167,13 +184,13 @@ def main():
         updated_section,
     )
 
-    # 7. Write the updated SVG to .github/funding/progress.svg
+    # 7. Write SVG
     SVG_OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     SVG_OUTPUT_PATH.write_text(
         build_svg(progress_pct, bar_width, is_completed), encoding="utf-8"
     )
 
-    # 8. Save updated README.md
+    # 8. Save updated README
     if match:
         new_content = (
             content[: match.start(2)] + updated_section + content[match.end(2) :]
