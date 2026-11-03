@@ -44,7 +44,7 @@
     <img src="https://img.shields.io/badge/Progress-0%25-ea580c?style=for-the-badge" alt="Funding Progress 0%" />
   </a>
 </p>
-  <a href="https://patreon.com/KryonOS"><img src="https://img.shields.io/badge/Support_KryonOS-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
+  <a href="https://www.patreon.com/cw/KryonOS/membership"><img src="https://img.shields.io/badge/Support_KryonOS-ea580c?style=for-the-badge&logo=heart&logoColor=white" alt="Support KryonOS Development" /></a>
 <p>
   <a href="https://patreon.com/KryonOS">
     <img src=".github/funding/progress.svg" width="400" height="28" alt="Funding Progress 0%" />
