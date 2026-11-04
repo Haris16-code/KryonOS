@@ -409,7 +409,34 @@ Areas where contributions are especially useful include:
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
 <p>Due to budget constraints, experimental board ports (Cardputer, T-HMI, CYD) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
 <p>&rarr; <a href="https://patreon.com/KryonOS">Support KryonOS Development</a></p>
+<hr>
 
+<h2 align="center">Our Sponsors</h2>
+
+<p align="center">
+  We would like to thank our sponsors for supporting KryonOS
+  and helping us make this project possible.
+</p>
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://ameridroid.com/" target="_blank">
+        <img
+          src="Documentation/assets/imgs/sponsors/ameri-droid.svg"
+          alt="Sponsor Name"
+          width="180"
+        />
+      </a>
+    </td>
+  </tr>
+</table>
+
+<p align="center">
+  <sub>Interested in sponsoring KryonOS? 
+    <a href="mailto:kryonos@harislab.tech">Contact us</a>.
+  </sub>
+</p>
 <hr>
 <h2>Stay Updated: Firmware Releases &amp; Development News</h2>
 <p>Subscribe to official KryonOS development updates to receive email notifications about new releases, newly supported hardware boards, architecture deep dives, and upcoming features:</p>
