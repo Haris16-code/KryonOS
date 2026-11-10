@@ -1,0 +1,12 @@
+{
+  "name": "Bluetooth Inspector",
+  "packageName": "com.kryonos.bttest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Easy-to-use Bluetooth utility: one-tap BLE Scanner, GATT Client inspector, and peripheral broadcaster.",
+  "type": "Utility",
+  "category": "Wireless",
+  "api": 3,
+  "main": "main.js"
+}
+

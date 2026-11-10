@@ -1,0 +1,14 @@
+{
+  "name": "API Diagnostics Suite",
+  "packageName": "com.kryonos.apitest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Automated universal hardware & software API test suite for KryonOS. Systematically validates all OS subsystems: System, Device, FS, Crypto, Audio, Inputs, Display, GPIO, PWM, I2C, Net, GPS, LocalAI, IPC, and 3D.",
+  "type": "Utility",
+  "category": "Diagnostics",
+  "api": 3,
+  "main": "main.js",
+  "changelog": "Initial release of comprehensive automated API test suite with live assertions, sub-millisecond benchmarks, categorical breakdown, and persistent test report export.",
+  "allowCompanionLaunch": true
+}
+

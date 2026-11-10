@@ -31,9 +31,13 @@ public:
     static bool readCalData(uint16_t* calData);
     static bool writeCalData(uint16_t* calData);
     
+    // Mutex Synchronization
+    static void lock();
+    static void unlock();
+
     // Directory Operations
     static bool mkdir(const char* path);
-    static bool rmdir(const char* path);
+    static bool rmdir(const char* path, bool recursive = false, int depth = 0);
     static bool isDirectory(const char* path);
     static bool isFile(const char* path);
     
@@ -60,6 +64,11 @@ public:
     static bool mountSD();
     static void unmountSD();
     static bool formatSD();
+};
+
+struct FSLockGuard {
+    FSLockGuard() { FileSystem::lock(); }
+    ~FSLockGuard() { FileSystem::unlock(); }
 };
 
 #endif // FILE_SYSTEM_H

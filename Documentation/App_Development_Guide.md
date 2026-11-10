@@ -71,21 +71,264 @@ The `main.js` file is the entry point of your application. When a user clicks yo
 Because KryonOS handles the underlying C++ translation, you can write simple, high-level JavaScript to draw graphics, read files, and trigger UI components.
 
 ### Your First App (`main.js`)
-Here is a simple example that turns the screen blue, prints "Hello KryonOS!", waits 3 seconds, and then gracefully exits back to the Launcher:
+Here is a simple example that clears the screen to navy, centers `"Hello KryonOS!"` dynamically using live screen dimensions, and runs until the user taps the top-right exit corner:
 
 ```javascript
+var SW = System.screenWidth();
+var SH = System.screenHeight();
+
 // Clear the screen
-Graphics.fillScreen(Graphics.COLOR_BLUE);
+System.fillScreen(NAVY);
 
-// Draw some text in the center
-Graphics.setTextColor(Graphics.COLOR_WHITE);
-Graphics.drawString("Hello KryonOS!", 120, 160, 2);
+// Draw centered text using dynamic screen dimensions
+System.setTextColor(WHITE, NAVY);
+System.drawString("Hello KryonOS!", Math.floor(SW / 2) - 48, Math.floor(SH / 2) - 8, 2);
 
-// Wait for 3 seconds
-System.delay(3000);
+// Main loop (System.delay handles background services and touch exit)
+while (true) {
+    var touch = System.getTouch();
+    if (touch.touched) {
+        // Handle touch at touch.x, touch.y
+    }
+    System.delay(16);
+}
+```
 
-// Close the app and return to the OS Launcher
-System.exit();
+---
+
+## 4. Multi-Resolution & T-Deck Plus (`320x240`) UI Design Guide (Preventing Stretched UI)
+
+KryonOS runs across multiple hardware form factors with different display orientations and aspect ratios:
+- **Portrait Boards (`240x320`, 3:4 aspect ratio)**: Standard ESP32-WROOM / CYD / ESP32-S3 touch displays (`SW = 240`, `SH = 320`).
+- **Landscape Boards (`320x240`, 4:3 aspect ratio)**: **LilyGo T-Deck Plus** (`SW = 320`, `SH = 240`).
+
+### Why Some Apps Look Stretched or Clipped on T-Deck Plus
+1. **Hardcoding `240` or `320`**: If an app assumes `SW = 240` and `SH = 320`, or stretches a `240x320` layout onto `320x240` by scaling X by `320/240` (`1.333x`) and Y by `240/320` (`0.75x`), squares become wide rectangles (`1.78:1` distortion), circles and `X`/`O` markers look squished, and UI elements drawn below `y = 240` (such as `y = 260..300`) are clipped off the bottom of the T-Deck Plus screen.
+2. **Sizing Square Boards/Grids from Width (`SW`) Only**: On a `320x240` landscape screen, the height (`240px`) is smaller than the width (`320px`). Sizing a game board using `SW` alone makes it taller than the `240px` vertical screen height.
+3. **Hardcoded Slice Counts in Sprite Rendering**: Assuming `10` slices of `32px` (`320px` total height) instead of computing `Math.ceil(SH / SLICE_H)` wastes rendering cycles or misaligns slice coordinates on a `240px`-tall display.
+
+---
+
+### The 5 Golden Rules for Crisp, Non-Stretchy JS Apps
+
+#### Rule 1: Always Query Live Hardware Dimensions (`System.screenWidth()` & `System.screenHeight()`)
+Never hardcode `240` or `320`. Query the physical pixel dimensions at the top of `main.js`:
+```javascript
+var SW = System.screenWidth();   // 320 on T-Deck Plus, 240 on Portrait boards
+var SH = System.screenHeight();  // 240 on T-Deck Plus, 320 on Portrait boards
+var IS_LANDSCAPE = (SW > SH);
+```
+KryonOS renders all drawing primitives (`System.fillRect`, `System.drawCircle`, `System.drawLine`, `System.drawString`, `System.pushSprite`) at **1:1 native pixel resolution** matching `SW x SH`, ensuring zero horizontal stretching.
+
+---
+
+#### Rule 2: Use `Math.min()` for Square Grids, Game Boards, and Circles
+To keep square grids (like Tic Tac Toe, Chess, Puzzle boards, or Gauges) perfectly **1:1 square** without stretching on either `240x320` or `320x240`, calculate the available width and height first, take `Math.min(availW, availH)`, and center the board on both axes:
+
+```javascript
+var SW = System.screenWidth();
+var SH = System.screenHeight();
+
+var headerH = 36;
+var footerH = 24;
+var availW  = SW - 24;
+var availH  = SH - headerH - footerH;
+
+// Lock the board to a 1:1 square that fits inside both 240x320 and 320x240
+var boardSize = Math.min(availW, availH);
+var cellSize  = Math.floor(boardSize / 3);
+boardSize     = cellSize * 3; // Exact multiple of 3 cells
+
+// Center horizontally and vertically in the available area
+var gridX = Math.floor((SW - boardSize) / 2);
+var gridY = headerH + Math.floor((availH - boardSize) / 2);
+var symbolRadius = Math.floor(cellSize * 0.32);
+```
+- **On `240x320`**: `availW = 216, availH = 260` -> `boardSize = 216` (`cellSize = 72`), centered at `gridX = 12, gridY = 58`.
+- **On T-Deck Plus (`320x240`)**: `availW = 296, availH = 180` -> `boardSize = 180` (`cellSize = 60`), centered at `gridX = 70, gridY = 36`.
+- Every cell is a true square (`60x60` or `72x72`) and every circle (`O`) and cross (`X`) has a true 1:1 aspect ratio!
+
+---
+
+#### Rule 3: Anchor Bottom UI Elements to `SH` (Never Hardcode `y > 240`)
+Any hardcoded coordinate with `y >= 240` will be off-screen on the T-Deck Plus (`SH = 240`). Always position ground planes, player sprites, and bottom buttons relative to `SH` and `SW`:
+
+```javascript
+// BAD (off-screen on T-Deck Plus where SH = 240, and off-center where SW = 320):
+// var groundY = 250;
+// var btnX = 40, btnY = 230, btnW = 160;
+
+// GOOD (works on both 240x320 and 320x240):
+var groundY = Math.floor(SH * 0.78);
+var btnW    = Math.min(200, SW - 60);
+var btnH    = 32;
+var btnX    = Math.floor((SW - btnW) / 2);
+var btnY1   = Math.floor(SH * 0.54);
+var btnY2   = btnY1 + btnH + 10;
+```
+
+---
+
+#### Rule 4: Dynamic Sliced Double-Buffering (`createSprite` + `bindSprite` + `pushSprite`)
+When using horizontal slice sprites for flicker-free rendering:
+1. Pass `SW` (`System.screenWidth()`) as the sprite width so the buffer spans all `320` pixels on T-Deck Plus.
+2. Compute `SLICES = Math.ceil(SH / SLICE_H)` dynamically from `SH` (`240 / 30 = 8` slices on T-Deck Plus, `320 / 32 = 10` slices on Portrait).
+3. Clear the bound sprite each slice using `System.fillScreen(bgColor)` while `System.bindSprite(true)` is active.
+
+```javascript
+var SW = System.screenWidth();
+var SH = System.screenHeight();
+var SLICE_H = 30; // Divides 240 (8 slices) cleanly; Math.ceil handles any SH
+var SLICES  = Math.ceil(SH / SLICE_H);
+
+var useSprite = System.createSprite(SW, SLICE_H);
+
+function renderFrame() {
+    if (useSprite) {
+        for (var s = 0; s < SLICES; s++) {
+            var sliceY = s * SLICE_H;
+            System.bindSprite(true);
+            System.fillScreen(BLACK); // Clears the entire SW x SLICE_H sprite buffer
+
+            // Draw all objects with Y shifted by -sliceY:
+            // e.g. System.fillCircle(ballX, ballY - sliceY, ballR, CYAN);
+
+            System.bindSprite(false);
+            System.pushSprite(0, sliceY);
+        }
+    } else {
+        System.fillScreen(BLACK);
+        // Direct draw fallback
+    }
+}
+```
+
+---
+
+#### Rule 5: Aspect-Correct 3D Rendering (`FastMath.transformVertices` & `Kryon3D`)
+When projecting 3D geometry onto the screen:
+- If using `FastMath.transformVertices(verts, mat, viewW, viewH, scale, distZ)`, always pass the live `SW` and `SH` (or viewport height `SH - topBarH`), and derive `scale` from `Math.min(SW, SH)` so 3D objects do not look oversized or clipped on landscape screens:
+```javascript
+var SW = System.screenWidth();
+var SH = System.screenHeight();
+var topBarH = 30;
+var viewH = SH - topBarH;
+
+// Uniform focal scale based on the shorter screen dimension (1:1 aspect ratio)
+var projScale = Math.floor(Math.min(SW, viewH) * 0.85);
+var projected = FastMath.transformVertices(vertices, rotMat, SW, viewH, projScale, 3.0);
+```
+- If using the hardware-accelerated `Kryon3D` engine, initialize it with the actual viewport dimensions (`Kryon3D.begin(SW, viewH, 16)`); `Kryon3D` automatically computes square-pixel perspective projection centered in `SW x viewH`.
+
+---
+
+### T-Deck Plus Hardware APIs (`Trackball`, `Keyboard`, `Speaker`, `Device`)
+
+KryonOS provides dedicated hardware APIs tailored for devices like the LilyGO T-Deck Plus, while gracefully functioning across all supported boards.
+
+#### 1. Trackball API (`Trackball` or `System.trackball`)
+```javascript
+// Check current delta movement (dx, dy reset automatically after query)
+var delta = Trackball.getDelta();
+cursorX = Math.max(0, Math.min(SW - 1, cursorX + delta.dx));
+cursorY = Math.max(0, Math.min(SH - 1, cursorY + delta.dy));
+
+// Check center trackball button
+if (Trackball.isClicked()) {
+    System.println("Trackball clicked at (" + cursorX + ", " + cursorY + ")");
+}
+
+// Full snapshot
+var state = Trackball.getState(); // { x, y, dx, dy, up, down, left, right, pressed, clicked }
+```
+
+#### 2. Keyboard API (`Keyboard` or `System.keyboard`)
+```javascript
+if (Keyboard.isAvailable()) {
+    // Read next pending character (non-blocking)
+    var key = Keyboard.getKey();
+    if (key !== null) {
+        System.println("Key pressed: " + key);
+    }
+
+    // Read full keyboard event object with key code and name (Enter, Backspace, Arrows)
+    var ev = Keyboard.getEvent();
+    if (ev) {
+        System.println("Event - Code: " + ev.code + ", Char: " + ev.char + ", Name: " + ev.name);
+    }
+
+    // Flush key queue before scene or dialog transition
+    Keyboard.clear();
+
+    // Adjust keyboard backlight intensity (0 to 100%)
+    Keyboard.setBacklightLevel(80);
+}
+```
+
+#### 3. Speaker / Audio API (`Speaker`, `Audio`, or `System.speaker`)
+```javascript
+// Play an audio file asynchronously via Core 0 I2S DMA
+Speaker.playWav("/local/system/sounds/boot.wav");
+
+// Play synthetic tones and sound presets
+Speaker.playBeep("chime"); // "click", "beep", "alert", "error", "chime"
+Speaker.playTone(440, 150, 80); // frequency, durationMs, volume (0-100)
+
+// Volume & Mute control
+Speaker.setVolume(85);
+Speaker.mute(false);
+```
+
+#### 4. Device Information API (`Device` or `System.device`)
+```javascript
+System.println("Board: " + Device.getName()); // "LilyGO T-Deck Plus"
+System.println("Battery: " + Device.getBatteryPercent() + "% (" + Device.getBatteryVoltage() + "V)");
+System.println("Charging: " + Device.isCharging());
+
+if (Device.hasTrackball()) {
+    // Enable trackball cursor mode
+}
+```
+
+#### 5. Bluetooth Wireless API (`Bluetooth`)
+```javascript
+// Power on radio
+Bluetooth.enable();
+
+// 1. Scan for nearby BLE devices and beacons
+Bluetooth.BLE.Scanner.on("discover", function(device) {
+    console.log("Found:", device.name, "| MAC:", device.address, "| RSSI:", device.rssi);
+    var beacon = Bluetooth.Utils.parseBeacon(device);
+    if (beacon && beacon.type === "ibeacon") {
+        console.log("iBeacon distance:", beacon.distance.toFixed(1) + "m");
+    }
+});
+// Starts continuous scanning (timeout: 0 = continuous until stop())
+// Incoming packets are pumped automatically whenever System.delay(ms) runs!
+Bluetooth.BLE.Scanner.start({ timeout: 0, active: true, interval: 100, window: 99 });
+
+// 2. Connect to peripheral and subscribe to notifications
+Bluetooth.BLE.connect("C0:4E:30:11:22:33")
+    .then(function(dev) {
+        return dev.getServices(["180D"]);
+    })
+    .then(function(svcs) {
+        return svcs[0].getCharacteristics(["2A37"]);
+    })
+    .then(function(chars) {
+        chars[0].on("valueChange", function(data) {
+            console.log("Heart rate:", data[1]);
+        });
+        return chars[0].startNotifications();
+    });
+
+// 3. Turn your device into a Wireless BLE Keyboard for smartphones and PCs
+Bluetooth.BLE.Keyboard.start("T-Deck Plus Keyboard");
+if (Bluetooth.BLE.Keyboard.isConnected()) {
+    Bluetooth.BLE.Keyboard.write("Hello from KryonOS!\n");
+    Bluetooth.BLE.Keyboard.sendSpecial("enter");
+    Bluetooth.BLE.Keyboard.sendMedia("volup");
+}
 ```
 
 > [!IMPORTANT]  

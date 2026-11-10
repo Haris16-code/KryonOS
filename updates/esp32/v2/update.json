@@ -33,19 +33,14 @@
       "firmware_size": 1750608,
       "firmware_md5": "be57b1ef355ee2c1de6dd8acc2f86d65"
     },
-    "esp32-cyd-28": {
-      "supports_ota": false,
-      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher.",
+    "lilygo-t-deck": {
       "version": "2.0.1",
       "type": "patch",
-      "changelog": "- Security Hardening, Permissions & Runtime Improvements"
-    },
-    "esp32doit-devkit-v1": {
-      "supports_ota": false,
-      "guide": "Download your board's firmware binaries from GitHub Releases and flash them using an ESP32 flasher.",
-      "version": "2.0.1",
-      "type": "patch",
-      "changelog": "- Security Hardening, Permissions & Runtime Improvements"
+      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
+      "supports_ota": true,
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-lilygo-t-deck-firmware-0x10000.bin",
+      "firmware_size": 1754896,
+      "firmware_md5": ""
     }
   }
 }

@@ -22,6 +22,10 @@
 #include "Kernel/Services/KryonCloud/KryonCloudUI.h"
 #include "Kernel/Services/OTA/OTAManager.h"
 #include "Hal/Boards/Board.h"
+#include "Hal/Audio/AudioEngine.h"
+#include "Hal/Audio/BuiltinSounds.h"
+#include "Hal/Bluetooth/BluetoothEngine.h"
+#include "Hal/GPS/GPSEngine.h"
 
 // Define states
 #define STATE_LAUNCHER 0
@@ -42,8 +46,19 @@
 #define STATE_SETTINGS_WIFI_SAVED 15
 #define STATE_KRYON_CLOUD 16
 #define STATE_SETTINGS_PERMISSIONS 17
+#define STATE_SETTINGS_DISPLAY 18
+#define STATE_SETTINGS_KEYBOARD 19
+#define STATE_SETTINGS_BATTERY 20
+#define STATE_SETTINGS_CONNECTIONS 21
+#define STATE_SETTINGS_BLUETOOTH 22
+#define STATE_SETTINGS_BACKUP 23
+#define STATE_SETTINGS_GPS 24
 
 int currentState = STATE_LAUNCHER;
+
+static unsigned long s_lastActivityMs = 0;
+static bool s_isDisplaySleeping = false;
+static bool s_wasCharging = false;
 
 void setup() {
     Serial.begin(115200);
@@ -66,20 +81,28 @@ void setup() {
     }
 #endif
 
-    // Init TFT & Touch Driver
-    tft.init();
-    tft.setRotation(0);
+    // Init Board Hardware & Display
+    initHardware();
+    initDisplay();
     TouchDriver::init(&tft);
+
+    int16_t bootCX = tft.width() / 2;
+    int16_t bootCY = tft.height() / 2;
 
     tft.fillScreen(TFT_BLACK);
     tft.setTextColor(TFT_WHITE, TFT_BLACK);
     tft.setTextDatum(MC_DATUM);
-    tft.drawString("Booting KryonOS...", 120, 160, 2);
+    tft.drawString("Booting KryonOS...", bootCX, bootCY, 2);
+
+    // Initialize Audio Engine & Play Boot Sound immediately while booting
+    AudioEngine::init();
+    s_wasCharging = isChargerConnected(); // Cold boot charging state sync
+    AudioEngine::playWavMemory(BUILTIN_BOOT_WAV, BUILTIN_BOOT_WAV_LEN);
 
     // Initialize File Systems (LittleFS & SD)
     if (!FileSystem::init()) {
         Serial.println("File System Warning: One or more FS failed to mount.");
-        tft.drawString("FS Mount Warning!", 120, 180, 2);
+        tft.drawString("FS Mount Warning!", bootCX, bootCY + 20, 2);
         delay(1000);
     }
     
@@ -89,11 +112,11 @@ void setup() {
     // Initialize Web Manager (Only if not disabled)
     if (!FileSystem::exists("/local/nowifi.txt")) {
         tft.fillScreen(TFT_BLACK);
-        tft.drawString("Connecting WiFi...", 120, 160, 2);
+        tft.drawString("Connecting WiFi...", bootCX, bootCY, 2);
         Serial.println("DEBUG: Starting WebManager...");
         if (WebManager::init()) {
-            tft.drawString("WiFi Connected!", 120, 140, 2);
-            tft.drawString(WebManager::getIPAddress(), 120, 180, 2);
+            tft.drawString("WiFi Connected!", bootCX, bootCY - 20, 2);
+            tft.drawString(WebManager::getIPAddress(), bootCX, bootCY + 20, 2);
             delay(2000);
         }
         Serial.println("DEBUG: WebManager initialized.");
@@ -124,8 +147,9 @@ void setup() {
     // Initial App Scan (with loading bar outline)
     Serial.println("DEBUG: Scanning Local Apps...");
     tft.fillScreen(TFT_BLACK);
-    tft.drawString("Loading Apps...", 120, 160, 2);
-    tft.drawRect(18, 198, 204, 14, TFT_WHITE); // Loading bar outline
+    tft.setTextDatum(MC_DATUM);
+    tft.drawString("Loading Apps...", bootCX, bootCY, 2);
+    tft.drawRect(bootCX - 102, bootCY + 30, 204, 14, TFT_WHITE); // Loading bar outline centered
     LauncherUI::scanLocalApps();
     LauncherUI::needsRescan = false;
     Serial.println("DEBUG: Local Apps Scanned.");
@@ -153,6 +177,19 @@ void setup() {
         KryonCloudManager::sendBootTelemetry();
     }
     
+    // Load Display and Keyboard preferences
+    SettingsUI::loadPreferences();
+    setBacklightLevel(SettingsUI::getDisplayBrightness());
+    setKeyboardBacklightLevel(SettingsUI::getKeyboardBrightness());
+
+    // Initialize Bluetooth Engine (respects persisted power state)
+    BluetoothEngine::init();
+
+    // Initialize GPS Engine
+    GPSEngine::init();
+
+    s_lastActivityMs = millis();
+
     Serial.println("DEBUG: Setup complete, entering loop!");
     
     // Initial draw
@@ -165,7 +202,136 @@ void setup() {
 
 int lastState = -1; // To trigger draws on state change
 
+static void handleHardwareNavigation(BoardKey bk) {
+    if (bk == BOARD_KEY_NONE) return;
+
+    // Refresh and wake keyboard backlight on any interaction
+    setKeyboardBacklight(true);
+    s_lastActivityMs = millis();
+    if (s_isDisplaySleeping) {
+        s_isDisplaySleeping = false;
+        setBacklightLevel(SettingsUI::getDisplayBrightness());
+        return;
+    }
+
+    int16_t sw = tft.width();
+    int16_t sh = tft.height();
+    int footerH = 30;
+    int footerY = sh - footerH - 5;
+    int midFooterY = footerY + footerH / 2;
+
+    if (currentState == STATE_LAUNCHER) {
+        int colW = (sw - 10) / 3;
+        if (bk == BOARD_KEY_UP) {
+            LauncherUI::handleTouch(5 + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_DOWN) {
+            LauncherUI::handleTouch(5 + 2 * colW + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_ENTER) {
+            LauncherUI::handleTouch(5 + colW + colW / 2, midFooterY);
+        }
+    } else if (currentState == STATE_SETTINGS) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_LAUNCHER;
+        } else if (bk == BOARD_KEY_UP || bk == BOARD_KEY_DOWN || bk == BOARD_KEY_LEFT || bk == BOARD_KEY_RIGHT || bk == BOARD_KEY_ENTER) {
+            static int s_settingsSel = 0;
+            const int TOTAL_SETTINGS_ITEMS = 10;
+            if (bk == BOARD_KEY_UP) {
+                if (s_settingsSel >= 2) s_settingsSel -= 2;
+                else if (s_settingsSel > 0) s_settingsSel--;
+            } else if (bk == BOARD_KEY_DOWN) {
+                if (s_settingsSel + 2 < TOTAL_SETTINGS_ITEMS) s_settingsSel += 2;
+                else if (s_settingsSel < TOTAL_SETTINGS_ITEMS - 1) s_settingsSel++;
+            } else if (bk == BOARD_KEY_LEFT) {
+                if (s_settingsSel > 0) s_settingsSel--;
+            } else if (bk == BOARD_KEY_RIGHT) {
+                if (s_settingsSel < TOTAL_SETTINGS_ITEMS - 1) s_settingsSel++;
+            } else if (bk == BOARD_KEY_ENTER) {
+                int btnW = (sw - 32) / 2;
+                int col0X = 10 + btnW / 2;
+                int col1X = 10 + btnW + 12 + btnW / 2;
+                int btnH = (sh < 280) ? 26 : 34;
+                int rowGap = (sh < 280) ? 5 : 8;
+                int yStart = (sh < 280) ? 40 : 42;
+                int r = s_settingsSel / 2;
+                int c = s_settingsSel % 2;
+                int yPos = yStart + r * (btnH + rowGap) + btnH / 2;
+                int xPos = (c == 0) ? col0X : col1X;
+                SettingsUI::handleTouch(xPos, yPos);
+            }
+        }
+    } else if (currentState == STATE_APP_STORE) {
+        int colW = (sw - 10) / 4;
+        if (bk == BOARD_KEY_UP) {
+            AppStoreUI::handleTouch(5 + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_DOWN) {
+            AppStoreUI::handleTouch(5 + colW + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_ENTER) {
+            AppStoreUI::handleTouch(5 + 2 * colW + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            AppStoreUI::handleTouch(5 + 3 * colW + colW / 2, midFooterY);
+        }
+    } else if (currentState == STATE_INSTALLER) {
+        int colW = (sw - 10) / 4;
+        if (bk == BOARD_KEY_UP) {
+            InstallerUI::handleTouch(5 + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_DOWN) {
+            InstallerUI::handleTouch(5 + colW + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_ENTER) {
+            InstallerUI::handleTouch(5 + 2 * colW + colW / 2, midFooterY);
+        } else if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            InstallerUI::handleTouch(5 + 3 * colW + colW / 2, midFooterY);
+        }
+    } else if (currentState == STATE_HELP_CENTER) {
+        if (bk == BOARD_KEY_UP) {
+            HelpCenterUI::handleTouch(sw / 2, 70);
+        } else if (bk == BOARD_KEY_DOWN) {
+            HelpCenterUI::handleTouch(sw / 2, 150);
+        } else if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            HelpCenterUI::handleTouch(sw - 20, midFooterY);
+        }
+    } else if (currentState == STATE_WEB_APP) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_SETTINGS;
+        } else if (bk == BOARD_KEY_ENTER) {
+            WebServerAppUI::handleTouch(sw / 2, 135);
+        }
+    } else if (currentState == STATE_KRYON_CLOUD) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_LAUNCHER;
+        }
+    } else if (currentState == STATE_SETTINGS_CONNECTIONS) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_SETTINGS;
+        }
+    } else if (currentState == STATE_SETTINGS_BLUETOOTH || currentState == STATE_SETTINGS_WIFI || currentState == STATE_SETTINGS_GPS) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_SETTINGS_CONNECTIONS;
+        }
+    } else if (currentState == STATE_SETTINGS_BACKUP) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_SETTINGS;
+        } else if (bk == BOARD_KEY_UP) {
+            SettingsUI::feedBackupKeyboard('w');
+        } else if (bk == BOARD_KEY_DOWN) {
+            SettingsUI::feedBackupKeyboard('s');
+        } else if (bk == BOARD_KEY_ENTER) {
+            SettingsUI::feedBackupKeyboard(13);
+        }
+    } else if ((currentState >= STATE_SETTINGS_ABOUT && currentState <= STATE_SETTINGS_TIME_MANUAL) ||
+               (currentState >= STATE_SETTINGS_DISPLAY && currentState <= STATE_SETTINGS_BATTERY)) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK || bk == BOARD_KEY_DEL) {
+            currentState = STATE_SETTINGS;
+        }
+    } else if (currentState == STATE_RUN_APP) {
+        if (bk == BOARD_KEY_ESC || bk == BOARD_KEY_BACK) {
+            currentState = STATE_LAUNCHER;
+        }
+    }
+}
+
 void loop() {
+    // Poll Bluetooth HAL events
+    BluetoothEngine::poll();
 
     if (currentState != lastState) {
         if (currentState != STATE_RUN_APP) {
@@ -177,11 +343,18 @@ void loop() {
         else if (currentState == STATE_INSTALLER) InstallerUI::draw();
         else if (currentState == STATE_CALIBRATOR) TouchCalibrator::runCalibration();
         else if (currentState == STATE_WEB_APP) WebServerAppUI::draw();
+        else if (currentState == STATE_SETTINGS_CONNECTIONS) SettingsUI::drawConnections();
+        else if (currentState == STATE_SETTINGS_BLUETOOTH) SettingsUI::drawBluetooth();
+        else if (currentState == STATE_SETTINGS_GPS) SettingsUI::drawGPSSettings();
         else if (currentState == STATE_SETTINGS_ABOUT) SettingsUI::drawAbout();
         else if (currentState == STATE_SETTINGS_WIFI) SettingsUI::drawWiFi();
         else if (currentState == STATE_SETTINGS_WIFI_SAVED) SettingsUI::drawSavedNetworks();
         else if (currentState == STATE_SETTINGS_APPS) SettingsUI::drawApps();
         else if (currentState == STATE_SETTINGS_PERMISSIONS) SettingsUI::drawPermissions();
+        else if (currentState == STATE_SETTINGS_DISPLAY) SettingsUI::drawDisplay();
+        else if (currentState == STATE_SETTINGS_KEYBOARD) SettingsUI::drawKeyboard();
+        else if (currentState == STATE_SETTINGS_BATTERY) SettingsUI::drawBattery();
+        else if (currentState == STATE_SETTINGS_BACKUP) SettingsUI::drawBackup();
         else if (currentState == STATE_SETTINGS_TIME) SettingsUI::drawTimeSettings();
         else if (currentState == STATE_SETTINGS_TIME_MANUAL) SettingsUI::drawTimeManual();
         else if (currentState == STATE_UPDATER_BOOT) SettingsUI::drawUpdater(true);
@@ -211,6 +384,40 @@ void loop() {
     // Verify and confirm stable boot after 10 seconds of runtime
     OTAManager::confirmBootSuccessful();
 
+    // 1 Hz Real-Time Dynamic Header Tick & Charger Sound Detector
+    static unsigned long s_lastHeaderTickMs = 0;
+    if (millis() - s_lastHeaderTickMs >= 1000) {
+        s_lastHeaderTickMs = millis();
+
+        // Update real-time clock and battery status in header when in views displaying the status bar
+        if (currentState != STATE_RUN_APP && currentState != STATE_CALIBRATOR && !s_isDisplaySleeping) {
+            updateSystemTopBarRealTime(&tft);
+        }
+
+        // Charger connected sound detection (rising edge transition only)
+        bool currentlyCharging = isChargerConnected();
+        if (currentlyCharging && !s_wasCharging) {
+            if (FileSystem::exists("/local/system/sounds/charger.wav")) {
+                AudioEngine::playWav("/local/system/sounds/charger.wav");
+            } else if (FileSystem::exists("/local/charger-connected.wav")) {
+                AudioEngine::playWav("/local/charger-connected.wav");
+            } else if (FileSystem::exists("/sd/charger-connected.wav")) {
+                AudioEngine::playWav("/sd/charger-connected.wav");
+            } else {
+                AudioEngine::playWavMemory(BUILTIN_CHARGER_WAV, BUILTIN_CHARGER_WAV_LEN);
+            }
+        }
+        s_wasCharging = currentlyCharging;
+    }
+
+    // Idle Display Sleep Timeout Check
+    uint16_t timeoutSec = SettingsUI::getDisplayTimeoutSec();
+    if (!s_isDisplaySleeping && timeoutSec > 0 && (millis() - s_lastActivityMs > (unsigned long)timeoutSec * 1000UL)) {
+        s_isDisplaySleeping = true;
+        setBacklight(0);
+        setKeyboardBacklight(false);
+    }
+
     // Basic Touch handling loop
     uint16_t x, y;
     bool touched = TouchDriver::getTouch(&x, &y);
@@ -219,6 +426,16 @@ void loop() {
     static bool wasTouched = false;
 
     if (touched) {
+        s_lastActivityMs = millis();
+        if (s_isDisplaySleeping) {
+            s_isDisplaySleeping = false;
+            setBacklightLevel(SettingsUI::getDisplayBrightness());
+            setKeyboardBacklight(true);
+            wasTouched = true;
+            delay(150); // Debounce wake touch
+            return;
+        }
+
         bool processNow = false;
         
         if (!wasTouched) {
@@ -240,6 +457,12 @@ void loop() {
                 LauncherUI::handleTouch(x, y);
             } else if (currentState == STATE_SETTINGS) {
                 SettingsUI::handleTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_CONNECTIONS) {
+                SettingsUI::handleConnectionsTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_BLUETOOTH) {
+                SettingsUI::handleBluetoothTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_GPS) {
+                SettingsUI::handleGPSSettingsTouch(x, y);
             } else if (currentState == STATE_INSTALLER) {
                 InstallerUI::handleTouch(x, y);
             } else if (currentState == STATE_WEB_APP) {
@@ -254,6 +477,14 @@ void loop() {
                 SettingsUI::handleAppsTouch(x, y);
             } else if (currentState == STATE_SETTINGS_PERMISSIONS) {
                 SettingsUI::handlePermissionsTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_DISPLAY) {
+                SettingsUI::handleDisplayTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_KEYBOARD) {
+                SettingsUI::handleKeyboardTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_BATTERY) {
+                SettingsUI::handleBatteryTouch(x, y);
+            } else if (currentState == STATE_SETTINGS_BACKUP) {
+                SettingsUI::handleBackupTouch(x, y);
             } else if (currentState == STATE_SETTINGS_TIME) {
                 SettingsUI::handleTimeTouch(x, y);
             } else if (currentState == STATE_SETTINGS_TIME_MANUAL) {
@@ -268,7 +499,8 @@ void loop() {
                 KryonCloudUI::handleTouch(x, y);
             } else if (currentState == STATE_RUN_APP) {
                 // Check if user touched the top-right "X" button
-                if (x >= 200 && y <= 40) {
+                int16_t exitBtnX = tft.width() - 45;
+                if (x >= exitBtnX && y <= 40) {
                     currentState = STATE_LAUNCHER; // Exit app
                 }
             }
@@ -276,6 +508,36 @@ void loop() {
         wasTouched = true;
     } else {
         wasTouched = false;
+    }
+
+    // Hardware keyboard & trackball navigation handling
+    if (hasKeyboard()) {
+        BoardKey bk = getKeyInput();
+        if (bk != BOARD_KEY_NONE) {
+            s_lastActivityMs = millis();
+            if (s_isDisplaySleeping) {
+                s_isDisplaySleeping = false;
+                setBacklightLevel(SettingsUI::getDisplayBrightness());
+                setKeyboardBacklight(true);
+            } else if (currentState == STATE_SETTINGS_KEYBOARD) {
+                char ch = keyToChar(bk);
+                if (ch != 0) {
+                    SettingsUI::feedKeyboardInput(ch);
+                    SettingsUI::drawKeyboard();
+                } else {
+                    handleHardwareNavigation(bk);
+                }
+            } else if (currentState == STATE_SETTINGS_BACKUP) {
+                char ch = keyToChar(bk);
+                if (ch != 0) {
+                    SettingsUI::feedBackupKeyboard(ch);
+                } else {
+                    handleHardwareNavigation(bk);
+                }
+            } else {
+                handleHardwareNavigation(bk);
+            }
+        }
     }
 
     // Check for Serial Monitor commands (e.g. typing 'cal' triggers fresh calibration)

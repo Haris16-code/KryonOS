@@ -94,15 +94,16 @@ static void my_fatal(void *udata, const char *msg) {
         HarixKernel::tftInstance->drawString("and make this app running", 10, 100, 2);
         
         // Draw an 'X' to close/reboot
-        HarixKernel::tftInstance->fillRoundRect(200, 0, 40, 30, 5, TFT_WHITE);
+        int16_t closeX = HarixKernel::tftInstance->width() - 40;
+        HarixKernel::tftInstance->fillRoundRect(closeX, 0, 40, 30, 5, TFT_WHITE);
         HarixKernel::tftInstance->setTextColor(TFT_RED, TFT_WHITE);
-        HarixKernel::tftInstance->drawString("X", 215, 8, 2);
+        HarixKernel::tftInstance->drawString("X", closeX + 15, 8, 2);
         
         // Wait for user to touch the X before rebooting!
         uint16_t tx, ty;
         while(true) {
             if (TouchDriver::getTouch(&tx, &ty)) {
-                if (tx >= 200 && ty <= 40) break;
+                if (tx >= closeX && ty <= 40) break;
             }
             delay(50);
         }
@@ -186,14 +187,15 @@ void HarixKernel::checkJSError(duk_context *ctx, duk_int_t result) {
                 tftInstance->drawString("and make this app running", 10, 100, 2);
                 
                 // Draw an 'X' to close
-                tftInstance->fillRoundRect(200, 0, 40, 30, 5, TFT_WHITE);
+                int16_t closeX = tftInstance->width() - 40;
+                tftInstance->fillRoundRect(closeX, 0, 40, 30, 5, TFT_WHITE);
                 tftInstance->setTextColor(TFT_RED, TFT_WHITE);
-                tftInstance->drawString("X", 215, 8, 2);
+                tftInstance->drawString("X", closeX + 15, 8, 2);
                 
                 uint16_t tx, ty;
                 while(true) {
                     if (TouchDriver::getTouch(&tx, &ty)) {
-                        if (tx >= 200 && ty <= 40) break;
+                        if (tx >= closeX && ty <= 40) break;
                     }
                     delay(50);
                 }
@@ -254,14 +256,15 @@ void HarixKernel::checkJSError(duk_context *ctx, duk_int_t result) {
             }
 
             // Draw an 'X' to close
-            tftInstance->fillRoundRect(200, 0, 40, 30, 5, TFT_WHITE);
+            int16_t closeX = tftInstance->width() - 40;
+            tftInstance->fillRoundRect(closeX, 0, 40, 30, 5, TFT_WHITE);
             tftInstance->setTextColor(TFT_RED, TFT_WHITE);
-            tftInstance->drawString("X", 215, 8, 2);
+            tftInstance->drawString("X", closeX + 15, 8, 2);
             
             uint16_t tx, ty;
             while(true) {
                 if (TouchDriver::getTouch(&tx, &ty)) {
-                    if (tx >= 200 && ty <= 40) break;
+                    if (tx >= closeX && ty <= 40) break;
                 }
                 delay(50);
             }
@@ -388,14 +391,15 @@ void HarixKernel::runFile(const char* filePath) {
             tftInstance->drawString("and make this app running", 10, 100, 2);
             
             // Draw an 'X' to close
-            tftInstance->fillRoundRect(200, 0, 40, 30, 5, TFT_WHITE);
+            int16_t closeX = tftInstance->width() - 40;
+            tftInstance->fillRoundRect(closeX, 0, 40, 30, 5, TFT_WHITE);
             tftInstance->setTextColor(TFT_RED, TFT_WHITE);
-            tftInstance->drawString("X", 215, 8, 2);
+            tftInstance->drawString("X", closeX + 15, 8, 2);
             
             uint16_t tx, ty;
             while(true) {
                 if (TouchDriver::getTouch(&tx, &ty)) {
-                    if (tx >= 200 && ty <= 40) break;
+                    if (tx >= closeX && ty <= 40) break;
                 }
                 delay(50);
             }

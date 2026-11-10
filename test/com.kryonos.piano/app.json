@@ -1,0 +1,15 @@
+{
+    "name": "Concert Grand Piano",
+    "packageName": "com.kryonos.piano",
+    "version": "1.0.0",
+    "metaUrl": "https://raw.githubusercontent.com/Haris16-code/KryonOS-AppStore/refs/heads/main/categories/Media/piano/app.json",
+    "author": "KryonOS Audio Labs",
+    "description": "Super-realistic acoustic concert grand piano featuring high-fidelity sound synthesis, 3D ivory & ebony keys, touch glissando, T-Deck QWERTY keyboard mapping, trackball sustain pedal, instrument voice presets, and built-in demo songs.",
+    "type": "Application",
+    "category": "Media",
+    "api": 3,
+    "main": "main.js",
+    "changelog": "Initial release with realistic 3D acoustic concert grand UI, I2S DAC tone synthesis, sustain pedal, demo song playback, and recorder.",
+    "allowCompanionLaunch": true
+}
+

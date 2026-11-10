@@ -1,5 +1,6 @@
 #include "OTAManager.h"
 #include "../Network/TLSHelper.h"
+#include "../../WiFiManager.h"
 #include <ArduinoJson.h>
 
 Preferences OTAManager::prefs;
@@ -19,6 +20,8 @@ void OTAManager::init() {
 String OTAManager::getBoardTargetName() {
 #if defined(TARGET_CARDPUTER)
     return "m5stack-cardputer";
+#elif defined(TARGET_T_DECK) || defined(LILYGO_T_DECK) || defined(BOARD_T_DECK)
+    return "lilygo-t-deck";
 #elif defined(TARGET_T_HMI)
     return "lilygo-t-hmi";
 #elif defined(TARGET_CYD)
@@ -73,7 +76,7 @@ bool OTAManager::checkUpdate(bool isBootCheck) {
     cachedInfo.fetchFailed = false;
     cachedInfo.hasUpdate = false;
 
-    if (WiFi.status() != WL_CONNECTED) {
+    if (!WiFiManager::isConnected() || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
         cachedInfo.fetchFailed = true;
         return false;
     }
@@ -82,10 +85,9 @@ bool OTAManager::checkUpdate(bool isBootCheck) {
     TLSHelper::configureTLS(client, UPDATE_MANIFEST_URL);
 
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(15000);
-    http.setReuse(false);
-    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
+    TLSHelper::configureHTTP(http, 30000);
+    String ua = "KryonOS-OTA/" + String(KRYONOS_VERSION) + " (" + getBoardTargetName() + ")";
+    http.setUserAgent(ua.c_str());
 
     if (!http.begin(client, UPDATE_MANIFEST_URL)) {
         cachedInfo.fetchFailed = true;
@@ -124,6 +126,15 @@ bool OTAManager::checkUpdate(bool isBootCheck) {
             // 2. Parse Target Board Object
             String boardKey = getBoardTargetName();
             JsonObject boardObj = doc["boards"][boardKey].as<JsonObject>();
+            if (boardObj.isNull() && boardKey == "lilygo-t-deck") {
+                if (doc["boards"].containsKey("lilygo-t-deck")) {
+                    boardObj = doc["boards"]["lilygo-t-deck"].as<JsonObject>();
+                } else if (doc["boards"].containsKey("t-deck")) {
+                    boardObj = doc["boards"]["t-deck"].as<JsonObject>();
+                } else if (doc["boards"].containsKey("lilygo-t-deck-plus")) {
+                    boardObj = doc["boards"]["lilygo-t-deck-plus"].as<JsonObject>();
+                }
+            }
 
             if (!boardObj.isNull()) {
                 // Priority: Board-specific values, falling back to release baseline
@@ -179,7 +190,9 @@ bool OTAManager::checkUpdate(bool isBootCheck) {
         }
     } else {
         cachedInfo.fetchFailed = true;
-        Serial.printf("[OTA] Manifest GET failed: HTTP %d\n", code);
+        char tlsErrBuf[128] = {0};
+        int tlsErr = client.lastError(tlsErrBuf, sizeof(tlsErrBuf));
+        Serial.printf("[OTA] Manifest GET failed: HTTP %d (TLS error %d: %s)\n", code, tlsErr, (tlsErr != 0 ? tlsErrBuf : "Connection Failed"));
     }
 
     http.end();
@@ -187,7 +200,7 @@ bool OTAManager::checkUpdate(bool isBootCheck) {
 }
 
 bool OTAManager::startFlashUpdate(std::function<void(const OTAProgress&)> progressCb) {
-    if (WiFi.status() != WL_CONNECTED) {
+    if (!WiFiManager::isConnected() || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
         currentProgress.isError = true;
         currentProgress.isFlashing = false;
         currentProgress.errorMessage = "No WiFi Connection!";
@@ -211,13 +224,11 @@ bool OTAManager::startFlashUpdate(std::function<void(const OTAProgress&)> progre
 
     WiFiClientSecure client;
     TLSHelper::configureTLS(client, cachedInfo.firmwareUrl);
-    client.setTimeout(15000);
 
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(20000);
-    http.setReuse(false);
-    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
+    TLSHelper::configureHTTP(http, 30000);
+    String ua = "KryonOS-OTA/" + String(KRYONOS_VERSION) + " (" + getBoardTargetName() + ")";
+    http.setUserAgent(ua.c_str());
 
     if (!http.begin(client, cachedInfo.firmwareUrl)) {
         currentProgress.isError = true;
@@ -297,7 +308,7 @@ bool OTAManager::startFlashUpdate(std::function<void(const OTAProgress&)> progre
 
     while (http.connected() && (contentLength > 0 ? (totalRead < (size_t)contentLength) : true)) {
         // 1. Check WiFi connection integrity during download
-        if (WiFi.status() != WL_CONNECTED) {
+        if (!WiFiManager::isConnected() || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
             currentProgress.isError = true;
             currentProgress.isFlashing = false;
             currentProgress.errorMessage = "WiFi disconnected during download!";

@@ -1,0 +1,14 @@
+{
+    "name": "Audio Player",
+    "packageName": "com.kryonos.musicplayer",
+    "version": "2.0.0",
+    "author": "KryonOS Team",
+    "description": "High-fidelity digital audio player for LilyGO T-Deck Plus and KryonOS devices. Plays MP3 and WAV audio files directly from Internal Flash (/local) or MicroSD (/sd) with real-time spectrum visualizer, trackball navigation, and touch controls.",
+    "type": "Application",
+    "category": "Media",
+    "api": 3,
+    "main": "main.js",
+    "changelog": "Added full MP3 audio playback support with hardware-accelerated Core 0 decoding, dynamic format detection, and unified audio file picker.",
+    "allowCompanionLaunch": true
+}
+

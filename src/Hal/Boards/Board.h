@@ -28,6 +28,8 @@ void loadTouchCalibration(void);
 
 // --- Hardware Controls (Backlight / RGB LED) ---
 void setBacklight(uint8_t brightness);
+void setBacklightLevel(uint8_t percent);
+uint8_t getBacklightLevel(void);
 void setRGBLED(uint8_t red, uint8_t green, uint8_t blue, bool true_color = true);
 
 // --- Complete Hardware Key Enumeration ---
@@ -71,7 +73,11 @@ enum BoardKey {
     BOARD_KEY_SHIFT,
     BOARD_KEY_CTRL,
     BOARD_KEY_OPT,
-    BOARD_KEY_ALT
+    BOARD_KEY_ALT,
+
+    // Printable character that has no dedicated enum value (e.g. '@', '#').
+    // Retrieve it with keyToChar(). Used by boards whose keyboard reports ASCII directly.
+    BOARD_KEY_CHAR
 };
 
 // Keyboard Matrix Input Handling
@@ -81,14 +87,52 @@ void updateModifiers(BoardKey key);
 void clearModifiers(void);
 bool isShiftActive(void);
 bool isFnActive(void);
+void setKeyboardBacklight(bool enable);
+void setKeyboardBacklightLevel(uint8_t percent);
+uint8_t getKeyboardBacklightLevel(void);
 
 // Battery & Power Monitoring
 float getBatteryVoltage(void);
 int getBatteryPercent(void);
+bool isChargerConnected(void);
+int getEstimatedChargeTimeMins(void);
+int getEstimatedDischargeTimeMins(void);
 
 // Board Capability Queries
 bool hasTouch(void);
 bool hasKeyboard(void);
 bool hasBattery(void);
+bool hasTrackball(void);
+bool hasSpeaker(void);
+bool hasGPS(void);
+const char* getBoardModelName(void);
+void setGpsHardwareConfirmed(bool present);
+
+// Trackball Interface
+struct TrackballState {
+    int16_t x;
+    int16_t y;
+    int16_t dx;
+    int16_t dy;
+    uint8_t up;
+    uint8_t down;
+    uint8_t left;
+    uint8_t right;
+    bool pressed;
+    bool clicked;
+};
+
+TrackballState getTrackballState(void);
+void getTrackballDelta(int16_t* dx, int16_t* dy);
+bool isTrackballPressed(void);
+bool isTrackballClicked(void);
+void resetTrackball(void);
+void getTrackballRawCounts(uint8_t* up, uint8_t* down, uint8_t* left, uint8_t* right);
+void clearKeyboardBuffer(void);
+bool hasKeyInput(void);
+
+// System TopBar Helper
+void drawSystemTopBar(TFT_eSPI* tft, const String& title, uint16_t borderColor = TFT_GREEN);
+void updateSystemTopBarRealTime(TFT_eSPI* tft);
 
 #endif // BOARD_H

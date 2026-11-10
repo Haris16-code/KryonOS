@@ -12,17 +12,20 @@ void WebServerAppUI::init(TFT_eSPI *tft) {
 void WebServerAppUI::draw() {
     if (!tftInstance) return;
     
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    
     tftInstance->fillScreen(TFT_BLACK);
     
     // Draw the main border
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
+    tftInstance->drawRoundRect(3, 3, screenW - 6, screenH - 6, 5, TFT_WHITE);
     
     // Header Bar
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_CYAN);
+    tftInstance->fillRoundRect(6, 6, screenW - 12, 30, 5, TFT_BLACK);
+    tftInstance->drawRoundRect(6, 6, screenW - 12, 30, 5, TFT_CYAN);
     tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Web Server", 120, 21, 2);
+    tftInstance->drawString("Web Server", screenW / 2, 21, 2);
 
     bool wifiDisabled = FileSystem::exists("/local/nowifi.txt");
     bool isConnected = WebManager::isActive();
@@ -30,8 +33,8 @@ void WebServerAppUI::draw() {
 
     tftInstance->setTextDatum(TL_DATUM);
     
-    int y = 44;
-    int spacing = 20;
+    int y = (screenH < 260) ? 40 : 44;
+    int spacing = (screenH < 260) ? 17 : 20;
 
     String user = WebManager::getAdminUsername();
     String pass = WebManager::getAdminPassword();
@@ -43,7 +46,7 @@ void WebServerAppUI::draw() {
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
         tftInstance->drawString("Please turn on WiFi", 15, y, 2);
         y += spacing;
-        tftInstance->drawString("in Settings > WiFi.", 15, y, 2);
+        tftInstance->drawString("in Settings > Connections.", 15, y, 2);
     } else if (!isConnected) {
         tftInstance->setTextColor(TFT_YELLOW, TFT_BLACK);
         tftInstance->drawString("WiFi DISCONNECTED", 15, y, 2);
@@ -104,43 +107,64 @@ void WebServerAppUI::draw() {
     }
 
     // Change User / Change Pass buttons
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->fillRoundRect(12, 182, 104, 32, 5, 0x18C3 /* Dark Blue-Grey */);
-    tftInstance->drawRoundRect(12, 182, 104, 32, 5, TFT_CYAN);
-    tftInstance->setTextColor(TFT_WHITE, 0x18C3);
-    tftInstance->drawString("Set User", 64, 198, 2);
+    int btnY = (screenH < 260) ? 142 : 182;
+    int btnH = (screenH < 260) ? 26 : 32;
+    int btnW = (screenW - 36) / 2;
+    int b1X = 12;
+    int b2X = 12 + btnW + 12;
 
-    tftInstance->fillRoundRect(124, 182, 104, 32, 5, 0x18C3 /* Dark Blue-Grey */);
-    tftInstance->drawRoundRect(124, 182, 104, 32, 5, TFT_CYAN);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->fillRoundRect(b1X, btnY, btnW, btnH, 5, 0x18C3 /* Dark Blue-Grey */);
+    tftInstance->drawRoundRect(b1X, btnY, btnW, btnH, 5, TFT_CYAN);
     tftInstance->setTextColor(TFT_WHITE, 0x18C3);
-    tftInstance->drawString("Set Pass", 176, 198, 2);
+    tftInstance->drawString("Set User", b1X + btnW / 2, btnY + btnH / 2, 2);
+
+    tftInstance->fillRoundRect(b2X, btnY, btnW, btnH, 5, 0x18C3 /* Dark Blue-Grey */);
+    tftInstance->drawRoundRect(b2X, btnY, btnW, btnH, 5, TFT_CYAN);
+    tftInstance->setTextColor(TFT_WHITE, 0x18C3);
+    tftInstance->drawString("Set Pass", b2X + btnW / 2, btnY + btnH / 2, 2);
 
     // Toggle Button (bottom area, above footer)
+    int toggleY = (screenH < 260) ? 173 : 230;
+    int toggleH = (screenH < 260) ? 26 : 36;
+    int toggleW = min(180, screenW - 60);
+    int toggleX = (screenW - toggleW) / 2;
+
     if (!isRunning || !isConnected || wifiDisabled) {
         uint16_t btnColor = (isConnected && !wifiDisabled) ? 0x03E0 /* Dark Green */ : TFT_DARKGREY;
-        tftInstance->fillRoundRect(45, 230, 150, 36, 6, btnColor);
-        tftInstance->drawRoundRect(45, 230, 150, 36, 6, TFT_WHITE);
+        tftInstance->fillRoundRect(toggleX, toggleY, toggleW, toggleH, 6, btnColor);
+        tftInstance->drawRoundRect(toggleX, toggleY, toggleW, toggleH, 6, TFT_WHITE);
         tftInstance->setTextColor(TFT_WHITE, btnColor);
-        tftInstance->drawString("Turn ON", 120, 248, 2);
+        tftInstance->drawString("Turn ON", screenW / 2, toggleY + toggleH / 2, 2);
     } else {
-        tftInstance->fillRoundRect(45, 230, 150, 36, 6, TFT_RED);
-        tftInstance->drawRoundRect(45, 230, 150, 36, 6, TFT_WHITE);
+        tftInstance->fillRoundRect(toggleX, toggleY, toggleW, toggleH, 6, TFT_RED);
+        tftInstance->drawRoundRect(toggleX, toggleY, toggleW, toggleH, 6, TFT_WHITE);
         tftInstance->setTextColor(TFT_WHITE, TFT_RED);
-        tftInstance->drawString("Turn OFF", 120, 248, 2);
+        tftInstance->drawString("Turn OFF", screenW / 2, toggleY + toggleH / 2, 2);
     }
 
     // Touch Footer
-    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    int footerY = screenH - 33;
+    tftInstance->drawRoundRect(5, footerY, screenW - 10, 28, 5, TFT_WHITE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("EXIT", 120, 300, 2);
+    tftInstance->drawString("EXIT", screenW / 2, footerY + 14, 2);
 }
 
 void WebServerAppUI::handleTouch(uint16_t x, uint16_t y) {
     extern int currentState;
+    if (!tftInstance) return;
+
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    int btnY = (screenH < 260) ? 142 : 182;
+    int btnH = (screenH < 260) ? 26 : 32;
+    int btnW = (screenW - 36) / 2;
+    int b1X = 12;
+    int b2X = 12 + btnW + 12;
 
     // Set User Button
-    if (x >= 12 && x <= 116 && y >= 182 && y <= 214) {
+    if (x >= b1X && x <= (b1X + btnW) && y >= btnY && y <= (btnY + btnH)) {
         String curUser = WebManager::getAdminUsername();
         String newUser = MyKeyboard::getString(curUser, "Enter Web Username:", 24);
         newUser.trim();
@@ -152,7 +176,7 @@ void WebServerAppUI::handleTouch(uint16_t x, uint16_t y) {
     }
 
     // Set Pass Button
-    if (x >= 124 && x <= 228 && y >= 182 && y <= 214) {
+    if (x >= b2X && x <= (b2X + btnW) && y >= btnY && y <= (btnY + btnH)) {
         String curPass = WebManager::getAdminPassword();
         String newPass = MyKeyboard::getString(curPass, "Enter Web Password:", 32);
         newPass.trim();
@@ -164,7 +188,12 @@ void WebServerAppUI::handleTouch(uint16_t x, uint16_t y) {
     }
 
     // Toggle Button
-    if (x >= 45 && x <= 195 && y >= 230 && y <= 266) {
+    int toggleY = (screenH < 260) ? 173 : 230;
+    int toggleH = (screenH < 260) ? 26 : 36;
+    int toggleW = min(180, screenW - 60);
+    int toggleX = (screenW - toggleW) / 2;
+
+    if (x >= toggleX && x <= (toggleX + toggleW) && y >= toggleY && y <= (toggleY + toggleH)) {
         if (!WebManager::isActive()) {
             return; // Cannot turn on without WiFi connection
         }
@@ -182,10 +211,9 @@ void WebServerAppUI::handleTouch(uint16_t x, uint16_t y) {
     }
 
     // Bottom Nav: EXIT
-    if (y >= 285) {
-        if (x > 60 && x < 180) {
-            currentState = 0; // STATE_LAUNCHER
-        }
+    int footerY = screenH - 33;
+    if (y >= footerY) {
+        currentState = 0; // STATE_LAUNCHER
     }
 }
 

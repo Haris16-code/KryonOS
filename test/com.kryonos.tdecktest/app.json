@@ -1,0 +1,14 @@
+{
+    "name": "T-Deck Hardware Lab",
+    "packageName": "com.kryonos.tdecktest",
+    "version": "1.0.0",
+    "author": "KryonOS Team",
+    "description": "Comprehensive hardware diagnostics & test lab for LilyGO T-Deck Plus. Tests Trackball, physical Keyboard & Backlight, MAX98357A I2S Audio Synthesizer, and Device power metrics.",
+    "type": "Utility",
+    "category": "Hardware",
+    "api": 2,
+    "main": "main.js",
+    "changelog": "Initial release with live visualizers for Trackball, Keyboard typing & backlight, Procedural audio synthesizer, and Device power telemetry.",
+    "allowCompanionLaunch": true
+}
+

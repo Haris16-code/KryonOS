@@ -1,0 +1,10 @@
+{
+  "name": "BLE Keyboard",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Turns LilyGO T-Deck Plus into a wireless Bluetooth keyboard for phones and PCs.",
+  "main": "main.js",
+  "api_level": 3,
+  "category": "Tools"
+}
+

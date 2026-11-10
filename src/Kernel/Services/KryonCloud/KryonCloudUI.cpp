@@ -65,6 +65,9 @@ CloudBanStatus KryonCloudUI::cachedBanStatus;
 // ============================================================================
 void KryonCloudUI::showLoadingScreen(const String& status, int progressPct) {
     if (!tftInstance) return;
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
 
     if (progressPct <= 20) {
         tftInstance->fillScreen(CLOUD_BG);
@@ -72,34 +75,42 @@ void KryonCloudUI::showLoadingScreen(const String& status, int progressPct) {
         // Title
         tftInstance->setTextColor(TFT_WHITE, CLOUD_BG);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("KryonCloud", 120, 85, 4);
+        int titleY = isLandscape ? 48 : 85;
+        tftInstance->drawString("KryonCloud", screenW / 2, titleY, 4);
 
         tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
-        tftInstance->drawString("Connecting to Platform...", 120, 115, 2);
+        int subY = isLandscape ? 76 : 115;
+        tftInstance->drawString("Connecting to Platform...", screenW / 2, subY, 2);
     }
 
     // Status Message Area
-    tftInstance->fillRect(10, 150, 220, 24, CLOUD_BG);
+    int statusY = isLandscape ? 116 : 150;
+    tftInstance->fillRect(10, statusY - 8, screenW - 20, 24, CLOUD_BG);
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(status.c_str(), 120, 162, 2);
+    tftInstance->drawString(status.c_str(), screenW / 2, statusY + 4, 2);
 
     // Progress Bar Track
-    tftInstance->drawRoundRect(20, 184, 200, 16, 4, CLOUD_CARD_BORDER);
-    tftInstance->fillRect(22, 186, 196, 12, CLOUD_TRACK_BG);
+    int trackW = min(260, screenW - 40);
+    int trackX = (screenW - trackW) / 2;
+    int trackY = isLandscape ? 146 : 184;
+    tftInstance->drawRoundRect(trackX, trackY, trackW, 16, 4, CLOUD_CARD_BORDER);
+    tftInstance->fillRect(trackX + 2, trackY + 2, trackW - 4, 12, CLOUD_TRACK_BG);
 
-    int barW = (196 * progressPct) / 100;
+    int maxFill = trackW - 4;
+    int barW = (maxFill * progressPct) / 100;
     if (barW < 0) barW = 0;
-    if (barW > 196) barW = 196;
+    if (barW > maxFill) barW = maxFill;
 
     if (barW > 0) {
-        tftInstance->fillRoundRect(22, 186, barW, 12, 3, CLOUD_ACCENT_BLUE);
+        tftInstance->fillRoundRect(trackX + 2, trackY + 2, barW, 12, 3, CLOUD_ACCENT_BLUE);
     }
 
     // Percentage
-    tftInstance->fillRect(90, 208, 60, 20, CLOUD_BG);
+    int pctY = isLandscape ? 176 : 218;
+    tftInstance->fillRect(screenW / 2 - 35, pctY - 10, 70, 20, CLOUD_BG);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_BG);
-    tftInstance->drawString((String(progressPct) + "%").c_str(), 120, 218, 2);
+    tftInstance->drawString((String(progressPct) + "%").c_str(), screenW / 2, pctY, 2);
 }
 
 void KryonCloudUI::init(TFT_eSPI *tft) {
@@ -210,9 +221,11 @@ void KryonCloudUI::draw() {
 // 1. Home (KryonCloud) 2. AI (KryonAI) 3. Beam (KryonBeam) 4. Drive (KryonDrive) 5. Limits (Usage Limits)
 // ============================================================================
 void KryonCloudUI::drawTopNav() {
+    int screenW = tftInstance->width();
+
     // Header Bar
-    tftInstance->fillRect(0, 0, 240, 56, CLOUD_NAV_BG);
-    tftInstance->drawFastHLine(0, 56, 240, CLOUD_CARD_BORDER);
+    tftInstance->fillRect(0, 0, screenW, 56, CLOUD_NAV_BG);
+    tftInstance->drawFastHLine(0, 56, screenW, CLOUD_CARD_BORDER);
 
     // Title & Status Dot
     bool online = KryonCloudManager::isConnected();
@@ -234,12 +247,12 @@ void KryonCloudUI::drawTopNav() {
     tftInstance->drawString(activeTitle, 22, 14, 2);
 
     // Top-Right Exit Button [X]
-    tftInstance->fillRoundRect(208, 4, 26, 20, 4, 0x8800);
+    tftInstance->fillRoundRect(screenW - 32, 4, 26, 20, 4, 0x8800);
     tftInstance->setTextColor(TFT_WHITE, 0x8800);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("X", 221, 14, 2);
+    tftInstance->drawString("X", screenW - 19, 14, 2);
 
-    // 5 Tab Buttons (Width = 46px each, gap = 2px)
+    // 5 Tab Buttons
     const char* tabNames[] = { "Home", "AI", "Beam", "Drive", "Limits" };
     CloudUISubState tabStates[] = {
         CLOUD_STATE_OVERVIEW,
@@ -249,33 +262,38 @@ void KryonCloudUI::drawTopNav() {
         CLOUD_STATE_LIMITS
     };
 
+    int tabW = (screenW - 6) / 5;
     for (int i = 0; i < 5; i++) {
-        int tx = 3 + i * 47;
+        int tx = 3 + i * tabW;
         bool active = (currentSubState == tabStates[i]);
 
         if (active) {
-            tftInstance->fillRoundRect(tx, 30, 45, 22, 4, CLOUD_ACCENT_BLUE);
+            tftInstance->fillRoundRect(tx, 30, tabW - 2, 22, 4, CLOUD_ACCENT_BLUE);
             tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
         } else {
-            tftInstance->fillRoundRect(tx, 30, 45, 22, 4, CLOUD_PILL_INACT);
-            tftInstance->drawRoundRect(tx, 30, 45, 22, 4, 0x31A7);
+            tftInstance->fillRoundRect(tx, 30, tabW - 2, 22, 4, CLOUD_PILL_INACT);
+            tftInstance->drawRoundRect(tx, 30, tabW - 2, 22, 4, 0x31A7);
             tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_PILL_INACT);
         }
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString(tabNames[i], tx + 22, 41, 2);
+        tftInstance->drawString(tabNames[i], tx + (tabW - 2) / 2, 41, 2);
     }
 }
 
 void KryonCloudUI::handleTopNavTouch(uint16_t x, uint16_t y) {
+    if (!tftInstance) return;
+    int screenW = tftInstance->width();
+
     // Close button
-    if (x >= 200 && y <= 26) {
+    if (x >= screenW - 40 && y <= 26) {
         currentState = 0; // STATE_LAUNCHER
         return;
     }
 
     // Tab switching
     if (y >= 28 && y <= 54) {
-        int tabIdx = (x - 3) / 47;
+        int tabW = (screenW - 6) / 5;
+        int tabIdx = (x - 3) / tabW;
         if (tabIdx >= 0 && tabIdx < 5) {
             CloudUISubState tabStates[] = {
                 CLOUD_STATE_OVERVIEW,
@@ -299,11 +317,13 @@ void KryonCloudUI::handleTopNavTouch(uint16_t x, uint16_t y) {
 // ============================================================================
 void KryonCloudUI::startPairingInit() {
     if (activePairingCode.length() > 0) return;
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
 
-    tftInstance->fillRect(10, 80, 220, 160, CLOUD_BG);
+    tftInstance->fillRect(10, 80, screenW - 20, screenH - 90, CLOUD_BG);
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Contacting Cloud Hub...", 120, 150, 2);
+    tftInstance->drawString("Contacting Cloud Hub...", screenW / 2, screenH / 2, 2);
 
     bool ok = KryonCloudManager::initPairingSession(activePairingCode, activePairingId, 
                                                     activeChallenge, pairingExpiresIn);
@@ -312,23 +332,26 @@ void KryonCloudUI::startPairingInit() {
         pairingStartTime = millis();
         drawPairingScreen();
     } else {
-        tftInstance->fillRect(10, 80, 220, 160, CLOUD_BG);
+        tftInstance->fillRect(10, 80, screenW - 20, screenH - 90, CLOUD_BG);
         tftInstance->setTextColor(TFT_RED, CLOUD_BG);
-        tftInstance->drawString("Pairing Init Failed", 120, 140, 2);
-        tftInstance->drawString("Check WiFi Connection", 120, 170, 2);
+        tftInstance->drawString("Pairing Init Failed", screenW / 2, screenH / 2 - 15, 2);
+        tftInstance->drawString("Check WiFi Connection", screenW / 2, screenH / 2 + 15, 2);
     }
 }
 
 void KryonCloudUI::drawPairingScreen() {
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+
     tftInstance->fillScreen(CLOUD_BG);
 
     // Header Frame
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, CLOUD_CARD_BORDER);
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, CLOUD_NAV_BG);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, CLOUD_ACCENT_BLUE);
+    tftInstance->drawRoundRect(3, 3, screenW - 6, screenH - 6, 5, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(6, 6, screenW - 12, 30, 5, CLOUD_NAV_BG);
+    tftInstance->drawRoundRect(6, 6, screenW - 12, 30, 5, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_NAV_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("KryonCloud Link", 120, 21, 2);
+    tftInstance->drawString("KryonCloud Link", screenW / 2, 21, 2);
 
     if (activePairingCode.length() == 0) {
         startPairingInit();
@@ -337,41 +360,55 @@ void KryonCloudUI::drawPairingScreen() {
 
     tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
     tftInstance->setTextDatum(TC_DATUM);
-    tftInstance->drawString("Open your browser & visit:", 120, 48, 2);
+    tftInstance->drawString("Open your browser & visit:", screenW / 2, 44, 2);
     
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
-    tftInstance->drawString("kryonos.harislab.tech", 120, 68, 2);
+    tftInstance->drawString("kryonos.harislab.tech", screenW / 2, 62, 2);
 
     tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
-    tftInstance->drawString("Enter this Pairing Code:", 120, 95, 2);
+    int labelY = (screenH < 260) ? 82 : 95;
+    tftInstance->drawString("Enter this Pairing Code:", screenW / 2, labelY, 2);
 
     // Large Code Box
-    tftInstance->fillRoundRect(15, 120, 210, 55, 8, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(15, 120, 210, 55, 8, CLOUD_ACCENT_BLUE);
+    int boxY = (screenH < 260) ? 102 : 120;
+    int boxH = (screenH < 260) ? 44 : 55;
+    int boxW = min(260, screenW - 30);
+    int boxX = (screenW - boxW) / 2;
+    tftInstance->fillRoundRect(boxX, boxY, boxW, boxH, 8, CLOUD_CARD_BG);
+    tftInstance->drawRoundRect(boxX, boxY, boxW, boxH, 8, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(activePairingCode.c_str(), 120, 148, 4);
+    tftInstance->drawString(activePairingCode.c_str(), screenW / 2, boxY + boxH / 2, 4);
 
     tftInstance->setTextColor(TFT_GREEN, CLOUD_BG);
-    tftInstance->drawString("Waiting for user claim...", 120, 195, 2);
+    int waitY = (screenH < 260) ? 158 : 195;
+    tftInstance->drawString("Waiting for user claim...", screenW / 2, waitY, 2);
 
     // Action Buttons
-    tftInstance->fillRoundRect(15, 240, 100, 35, 5, CLOUD_PILL_INACT);
-    tftInstance->drawRoundRect(15, 240, 100, 35, 5, CLOUD_CARD_BORDER);
+    int btnY = (screenH < 260) ? (screenH - 46) : 240;
+    int btnW = (screenW - 40) / 2;
+    tftInstance->fillRoundRect(15, btnY, btnW, 35, 5, CLOUD_PILL_INACT);
+    tftInstance->drawRoundRect(15, btnY, btnW, 35, 5, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_PILL_INACT);
-    tftInstance->drawString("NEW CODE", 65, 257, 2);
+    tftInstance->drawString("NEW CODE", 15 + btnW / 2, btnY + 17, 2);
 
-    tftInstance->fillRoundRect(125, 240, 100, 35, 5, 0x9000);
+    tftInstance->fillRoundRect(25 + btnW, btnY, btnW, 35, 5, 0x9000);
     tftInstance->setTextColor(TFT_WHITE, 0x9000);
-    tftInstance->drawString("CANCEL", 175, 257, 2);
+    tftInstance->drawString("CANCEL", 25 + btnW + btnW / 2, btnY + 17, 2);
 }
 
 void KryonCloudUI::handlePairingTouch(uint16_t x, uint16_t y) {
-    if (y >= 235 && y <= 280) {
-        if (x >= 15 && x <= 115) {
+    if (!tftInstance) return;
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    int btnY = (screenH < 260) ? (screenH - 46) : 240;
+    int btnW = (screenW - 40) / 2;
+
+    if (y >= btnY - 5 && y <= btnY + 40) {
+        if (x >= 15 && x <= (15 + btnW)) {
             activePairingCode = "";
             startPairingInit();
-        } else if (x >= 125 && x <= 225) {
+        } else if (x >= (25 + btnW) && x <= (25 + 2 * btnW)) {
             currentState = 0; // STATE_LAUNCHER
         }
     }
@@ -381,71 +418,160 @@ void KryonCloudUI::handlePairingTouch(uint16_t x, uint16_t y) {
 // 2. OVERVIEW SCREEN (HOME)
 // ============================================================================
 void KryonCloudUI::drawOverviewScreen() {
-    tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
 
-    // Account Profile Card
-    tftInstance->fillRoundRect(8, 62, 224, 72, 6, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 62, 224, 72, 6, CLOUD_CARD_BORDER);
-    
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString(KryonCloudManager::getUserName().c_str(), 16, 68, 2);
-    
-    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
-    tftInstance->drawString(KryonCloudManager::getAccountEmail().c_str(), 16, 88, 2);
+    tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
 
-    tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
-    tftInstance->drawString(("Handle: " + KryonCloudManager::getBeamHandle()).c_str(), 16, 108, 2);
-
-    // Live Quotas Quick Summary Card
     const CloudLimits& lim = KryonCloudManager::getLimits();
-    tftInstance->fillRoundRect(8, 140, 224, 96, 6, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 140, 224, 96, 6, CLOUD_CARD_BORDER);
 
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString("Daily AI Quota:", 16, 146, 2);
-    tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
-    tftInstance->drawString((String(lim.dailyAiRemaining) + " left").c_str(), 155, 146, 2);
+    if (isLandscape) {
+        // Landscape Mode (e.g. T-Deck 320x240): High-density dual-column layout
+        int colW = (screenW - 24) / 2;
+        int c1X = 8;
+        int c2X = c1X + colW + 8;
 
-    // AI Progress Bar (Green when plenty available, Orange/Red only when depleted)
-    tftInstance->drawRoundRect(16, 166, 208, 8, 3, CLOUD_CARD_BORDER);
-    tftInstance->fillRect(17, 167, 206, 6, CLOUD_TRACK_BG);
-    int aiW = (lim.dailyAiLimit > 0) ? (lim.dailyAiUsed * 206) / lim.dailyAiLimit : 0;
-    if (aiW > 206) aiW = 206;
-    if (aiW > 0) {
-        uint16_t aiBarColor = (aiW > 185) ? TFT_RED : ((aiW > 154) ? TFT_ORANGE : 0x07E0);
-        tftInstance->fillRoundRect(17, 167, aiW, 6, 2, aiBarColor);
+        // --- Column 1: Account Profile Card ---
+        tftInstance->fillRoundRect(c1X, 62, colW, 110, 6, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(c1X, 62, colW, 110, 6, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        String uName = KryonCloudManager::getUserName();
+        if (uName.length() > 16) uName = uName.substring(0, 14) + "..";
+        tftInstance->drawString(uName.c_str(), c1X + 8, 68, 2);
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        String email = KryonCloudManager::getAccountEmail();
+        if (email.length() > 18) email = email.substring(0, 16) + "..";
+        tftInstance->drawString(email.c_str(), c1X + 8, 88, 1);
+
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->drawString(("@" + KryonCloudManager::getBeamHandle()).c_str(), c1X + 8, 106, 2);
+
+        tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
+        tftInstance->drawString("Status: Verified Node", c1X + 8, 132, 1);
+
+        // --- Column 1: Action Buttons below Profile Card ---
+        int btnY = 180;
+        int btnH = 34;
+        int b1W = (colW - 6) / 2;
+
+        tftInstance->fillRoundRect(c1X, btnY, b1W, btnH, 5, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("Sync", c1X + b1W / 2, btnY + btnH / 2, 2);
+
+        tftInstance->fillRoundRect(c1X + b1W + 6, btnY, b1W, btnH, 5, 0x9000);
+        tftInstance->setTextColor(TFT_WHITE, 0x9000);
+        tftInstance->drawString("Unpair", c1X + b1W + 6 + b1W / 2, btnY + btnH / 2, 2);
+
+        // --- Column 2: Live Quotas Summary Card ---
+        tftInstance->fillRoundRect(c2X, 62, colW, 152, 6, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(c2X, 62, colW, 152, 6, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString("Daily AI Quota:", c2X + 8, 68, 2);
+
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TR_DATUM);
+        tftInstance->drawString((String(lim.dailyAiRemaining) + " left").c_str(), c2X + colW - 8, 68, 2);
+
+        int barTrackW = colW - 16;
+        tftInstance->drawRoundRect(c2X + 8, 88, barTrackW, 8, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(c2X + 9, 89, barTrackW - 2, 6, CLOUD_TRACK_BG);
+        int aiW = (lim.dailyAiLimit > 0) ? (lim.dailyAiUsed * (barTrackW - 2)) / lim.dailyAiLimit : 0;
+        if (aiW > barTrackW - 2) aiW = barTrackW - 2;
+        if (aiW > 0) {
+            uint16_t aiBarColor = (aiW > (barTrackW * 85) / 100) ? TFT_RED : ((aiW > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+            tftInstance->fillRoundRect(c2X + 9, 89, aiW, 6, 2, aiBarColor);
+        }
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString("Cloud Storage:", c2X + 8, 106, 2);
+
+        tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TR_DATUM);
+        tftInstance->drawString((String(lim.storageRemainingBytes / 1024) + "K free").c_str(), c2X + colW - 8, 106, 2);
+
+        tftInstance->drawRoundRect(c2X + 8, 126, barTrackW, 8, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(c2X + 9, 127, barTrackW - 2, 6, CLOUD_TRACK_BG);
+        int strW = (lim.storageQuotaBytes > 0) ? (lim.storageUsedBytes * (barTrackW - 2)) / lim.storageQuotaBytes : 0;
+        if (strW > barTrackW - 2) strW = barTrackW - 2;
+        if (strW > 0) {
+            uint16_t strBarColor = (strW > (barTrackW * 85) / 100) ? TFT_RED : ((strW > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+            tftInstance->fillRoundRect(c2X + 9, 127, strW, 6, 2, strBarColor);
+        }
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString(("Total: " + String(lim.storageQuotaMb) + " MB Cloud Disk").c_str(), c2X + 8, 142, 1);
+
+    } else {
+        // Portrait Mode (e.g. 240x320)
+        int cardW = screenW - 16;
+        tftInstance->fillRoundRect(8, 62, cardW, 72, 6, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(8, 62, cardW, 72, 6, CLOUD_CARD_BORDER);
+        
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString(KryonCloudManager::getUserName().c_str(), 16, 68, 2);
+        
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->drawString(KryonCloudManager::getAccountEmail().c_str(), 16, 88, 2);
+
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->drawString(("Handle: " + KryonCloudManager::getBeamHandle()).c_str(), 16, 108, 2);
+
+        tftInstance->fillRoundRect(8, 140, cardW, 96, 6, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(8, 140, cardW, 96, 6, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString("Daily AI Quota:", 16, 146, 2);
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->drawString((String(lim.dailyAiRemaining) + " left").c_str(), cardW - 70, 146, 2);
+
+        int barTrackW = cardW - 16;
+        tftInstance->drawRoundRect(16, 166, barTrackW, 8, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(17, 167, barTrackW - 2, 6, CLOUD_TRACK_BG);
+        int aiW = (lim.dailyAiLimit > 0) ? (lim.dailyAiUsed * (barTrackW - 2)) / lim.dailyAiLimit : 0;
+        if (aiW > barTrackW - 2) aiW = barTrackW - 2;
+        if (aiW > 0) {
+            uint16_t aiBarColor = (aiW > (barTrackW * 85) / 100) ? TFT_RED : ((aiW > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+            tftInstance->fillRoundRect(17, 167, aiW, 6, 2, aiBarColor);
+        }
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->drawString("Cloud Storage:", 16, 182, 2);
+        tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
+        tftInstance->drawString((String(lim.storageRemainingBytes / 1024) + " KB free").c_str(), cardW - 90, 182, 2);
+
+        tftInstance->drawRoundRect(16, 202, barTrackW, 8, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(17, 203, barTrackW - 2, 6, CLOUD_TRACK_BG);
+        int strW = (lim.storageQuotaBytes > 0) ? (lim.storageUsedBytes * (barTrackW - 2)) / lim.storageQuotaBytes : 0;
+        if (strW > barTrackW - 2) strW = barTrackW - 2;
+        if (strW > 0) {
+            uint16_t strBarColor = (strW > (barTrackW * 85) / 100) ? TFT_RED : ((strW > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+            tftInstance->fillRoundRect(17, 203, strW, 6, 2, strBarColor);
+        }
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->drawString("Node Status: Online & Verified", 16, 218, 1);
+
+        int btnW = (cardW - 8) / 2;
+        tftInstance->fillRoundRect(8, 244, btnW, 34, 5, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("Sync Fresh", 8 + btnW / 2, 261, 2);
+
+        tftInstance->fillRoundRect(8 + btnW + 8, 244, btnW, 34, 5, 0x9000);
+        tftInstance->setTextColor(TFT_WHITE, 0x9000);
+        tftInstance->drawString("Unpair Board", 8 + btnW + 8 + btnW / 2, 261, 2);
     }
-
-    // Cloud Storage Summary
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->drawString("Cloud Storage:", 16, 182, 2);
-    tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
-    tftInstance->drawString((String(lim.storageRemainingBytes / 1024) + " KB free").c_str(), 135, 182, 2);
-
-    // Storage Progress Bar
-    tftInstance->drawRoundRect(16, 202, 208, 8, 3, CLOUD_CARD_BORDER);
-    tftInstance->fillRect(17, 203, 206, 6, CLOUD_TRACK_BG);
-    int strW = (lim.storageQuotaBytes > 0) ? (lim.storageUsedBytes * 206) / lim.storageQuotaBytes : 0;
-    if (strW > 206) strW = 206;
-    if (strW > 0) {
-        uint16_t strBarColor = (strW > 185) ? TFT_RED : ((strW > 154) ? TFT_ORANGE : 0x07E0);
-        tftInstance->fillRoundRect(17, 203, strW, 6, 2, strBarColor);
-    }
-
-    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
-    tftInstance->drawString("Node Status: Online & Verified", 16, 218, 1);
-
-    // Action Buttons
-    tftInstance->fillRoundRect(8, 244, 108, 34, 5, CLOUD_ACCENT_BLUE);
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Sync Fresh", 62, 261, 2);
-
-    tftInstance->fillRoundRect(124, 244, 108, 34, 5, 0x9000);
-    tftInstance->setTextColor(TFT_WHITE, 0x9000);
-    tftInstance->drawString("Unpair Board", 178, 261, 2);
 }
 
 void KryonCloudUI::handleOverviewTouch(uint16_t x, uint16_t y) {
@@ -454,20 +580,51 @@ void KryonCloudUI::handleOverviewTouch(uint16_t x, uint16_t y) {
         return;
     }
 
-    if (y >= 244 && y <= 278) {
-        if (x >= 8 && x <= 116) {
-            // Sync Fresh Data
-            tftInstance->fillRect(8, 244, 108, 34, 0x0215);
-            tftInstance->setTextColor(TFT_YELLOW, 0x0215);
-            tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Syncing...", 62, 261, 2);
-            KryonCloudManager::syncAllFreshData();
-            drawOverviewScreen();
-        } else if (x >= 124 && x <= 232) {
-            // Unpair Device
-            KryonCloudManager::unpair();
-            resetToHome();
-            draw();
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    if (isLandscape) {
+        int colW = (screenW - 24) / 2;
+        int c1X = 8;
+        int btnY = 180;
+        int btnH = 34;
+        int b1W = (colW - 6) / 2;
+
+        if (y >= btnY && y <= btnY + btnH) {
+            if (x >= c1X && x <= c1X + b1W) {
+                // Sync
+                tftInstance->fillRect(c1X, btnY, b1W, btnH, 0x0215);
+                tftInstance->setTextColor(TFT_YELLOW, 0x0215);
+                tftInstance->setTextDatum(MC_DATUM);
+                tftInstance->drawString("Syncing...", c1X + b1W / 2, btnY + btnH / 2, 2);
+                KryonCloudManager::syncAllFreshData();
+                drawOverviewScreen();
+            } else if (x >= c1X + b1W + 6 && x <= c1X + 2 * b1W + 6) {
+                // Unpair
+                KryonCloudManager::unpair();
+                resetToHome();
+                draw();
+            }
+        }
+    } else {
+        int cardW = screenW - 16;
+        int btnW = (cardW - 8) / 2;
+        if (y >= 244 && y <= 278) {
+            if (x >= 8 && x <= 8 + btnW) {
+                // Sync Fresh Data
+                tftInstance->fillRect(8, 244, btnW, 34, 0x0215);
+                tftInstance->setTextColor(TFT_YELLOW, 0x0215);
+                tftInstance->setTextDatum(MC_DATUM);
+                tftInstance->drawString("Syncing...", 8 + btnW / 2, 261, 2);
+                KryonCloudManager::syncAllFreshData();
+                drawOverviewScreen();
+            } else if (x >= 8 + btnW + 8 && x <= 8 + 2 * btnW + 8) {
+                // Unpair Device
+                KryonCloudManager::unpair();
+                resetToHome();
+                draw();
+            }
         }
     }
 }
@@ -477,57 +634,79 @@ void KryonCloudUI::handleOverviewTouch(uint16_t x, uint16_t y) {
 // 3. KRYONAI SCREEN (Interactive Studio with Keyboard & Smooth Scrolling)
 // ============================================================================
 void KryonCloudUI::drawKryonAIScreen() {
-    tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
+
+    int cardW = screenW - 16;
+    int promptH = isLandscape ? 32 : 40;
 
     // Prompt Card (Tap to edit)
-    tftInstance->fillRoundRect(8, 62, 224, 40, 5, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 62, 224, 40, 5, CLOUD_ACCENT_BLUE);
+    tftInstance->fillRoundRect(8, 60, cardW, promptH, 5, CLOUD_CARD_BG);
+    tftInstance->drawRoundRect(8, 60, cardW, promptH, 5, CLOUD_ACCENT_BLUE);
     
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
     tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString("Prompt (Tap to type):", 14, 66, 1);
+    tftInstance->drawString("Prompt (Tap to type):", 14, 62, 1);
     
     tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
     String dispPrompt = aiConsolePrompt;
-    if (dispPrompt.length() > 28) dispPrompt = dispPrompt.substring(0, 25) + "...";
-    tftInstance->drawString(dispPrompt.c_str(), 14, 80, 2);
+    int maxPromptLen = isLandscape ? 38 : 28;
+    if ((int)dispPrompt.length() > maxPromptLen) dispPrompt = dispPrompt.substring(0, maxPromptLen - 3) + "...";
+    tftInstance->drawString(dispPrompt.c_str(), 14, isLandscape ? 74 : 78, 2);
 
-    // Action Buttons: Single "Ask AI" + "Clear" + "UP" + "DN"
-    tftInstance->fillRoundRect(8, 106, 84, 26, 4, CLOUD_ACCENT_BLUE);
+    // Action Buttons: "Ask AI" + "Clear" + "UP" + "DN"
+    int btnY = isLandscape ? 96 : 106;
+    int btnH = isLandscape ? 24 : 26;
+
+    tftInstance->fillRoundRect(8, btnY, 76, btnH, 4, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Ask AI", 50, 119, 2);
+    tftInstance->drawString("Ask AI", 46, btnY + btnH / 2, 2);
 
-    tftInstance->fillRoundRect(96, 106, 48, 26, 4, 0x6000);
+    tftInstance->fillRoundRect(88, btnY, 46, btnH, 4, 0x6000);
     tftInstance->setTextColor(TFT_WHITE, 0x6000);
-    tftInstance->drawString("Clear", 120, 119, 2);
+    tftInstance->drawString("Clear", 111, btnY + btnH / 2, 2);
 
-    tftInstance->fillRoundRect(148, 106, 40, 26, 4, CLOUD_PILL_INACT);
-    tftInstance->drawRoundRect(148, 106, 40, 26, 4, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(138, btnY, 36, btnH, 4, CLOUD_PILL_INACT);
+    tftInstance->drawRoundRect(138, btnY, 36, btnH, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_PILL_INACT);
-    tftInstance->drawString("UP", 168, 119, 2);
+    tftInstance->drawString("UP", 156, btnY + btnH / 2, 2);
 
-    tftInstance->fillRoundRect(192, 106, 40, 26, 4, CLOUD_PILL_INACT);
-    tftInstance->drawRoundRect(192, 106, 40, 26, 4, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(178, btnY, 36, btnH, 4, CLOUD_PILL_INACT);
+    tftInstance->drawRoundRect(178, btnY, 36, btnH, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_PILL_INACT);
-    tftInstance->drawString("DN", 212, 119, 2);
+    tftInstance->drawString("DN", 196, btnY + btnH / 2, 2);
+
+    const CloudLimits& lim = KryonCloudManager::getLimits();
+    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
+    tftInstance->setTextDatum(TR_DATUM);
+    tftInstance->drawString(("Daily AI: " + String(lim.dailyAiRemaining)).c_str(), screenW - 8, btnY + 4, 2);
 
     // Response Window (Strictly bounded)
-    tftInstance->fillRoundRect(8, 136, 224, 146, 5, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 136, 224, 146, 5, CLOUD_CARD_BORDER);
+    int respY = isLandscape ? 124 : 136;
+    int respH = isLandscape ? (screenH - respY - 6) : 146;
+
+    tftInstance->fillRoundRect(8, respY, cardW, respH, 5, CLOUD_CARD_BG);
+    tftInstance->drawRoundRect(8, respY, cardW, respH, 5, CLOUD_CARD_BORDER);
 
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
     tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString("AI Response:", 14, 140, 1);
+    tftInstance->drawString("AI Response:", 14, respY + 2, 1);
 
     // Render bounded text with scrolling
-    drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+    int wrapW = cardW - 14;
+    int wrapH = respH - 16;
+    drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
 
-    // Footer info
-    const CloudLimits& lim = KryonCloudManager::getLimits();
-    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(("Daily AI Remaining: " + String(lim.dailyAiRemaining) + " / " + String(lim.dailyAiLimit)).c_str(), 120, 298, 1);
+    // Footer info for portrait mode
+    if (!isLandscape) {
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString(("Daily AI Remaining: " + String(lim.dailyAiRemaining) + " / " + String(lim.dailyAiLimit)).c_str(), screenW / 2, screenH - 22, 1);
+    }
 }
 
 void KryonCloudUI::handleKryonAITouch(uint16_t x, uint16_t y) {
@@ -536,8 +715,22 @@ void KryonCloudUI::handleKryonAITouch(uint16_t x, uint16_t y) {
         return;
     }
 
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    int cardW = screenW - 16;
+    int promptH = isLandscape ? 32 : 40;
+    int btnY = isLandscape ? 96 : 106;
+    int btnH = isLandscape ? 24 : 26;
+    int respY = isLandscape ? 124 : 136;
+    int respH = isLandscape ? (screenH - respY - 6) : 146;
+    int wrapW = cardW - 14;
+    int wrapH = respH - 16;
+    int maxLines = isLandscape ? 5 : 7;
+
     // Tap prompt box -> Open Keyboard
-    if (y >= 62 && y <= 102) {
+    if (y >= 60 && y <= 60 + promptH) {
         String input = MyKeyboard::getString(aiConsolePrompt, "KryonAI Prompt:", 160);
         if (input.length() > 0) {
             aiConsolePrompt = input;
@@ -546,9 +739,9 @@ void KryonCloudUI::handleKryonAITouch(uint16_t x, uint16_t y) {
         return;
     }
 
-    // Action Buttons (y: 106 - 132)
-    if (y >= 106 && y <= 132) {
-        if (x >= 8 && x <= 92) {
+    // Action Buttons
+    if (y >= btnY && y <= btnY + btnH) {
+        if (x >= 8 && x <= 84) {
             // Ask AI Button
             if (!KryonCloudManager::isConnected()) {
                 aiConsoleResponse = "WiFi not connected! Connect in Settings.";
@@ -563,86 +756,86 @@ void KryonCloudUI::handleKryonAITouch(uint16_t x, uint16_t y) {
 
             aiConsoleResponse = "";
             aiScrollOffset = 0;
-            tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
+            tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
             tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
             tftInstance->setTextDatum(TL_DATUM);
-            tftInstance->drawString("Connecting & Streaming...", 14, 154, 2);
+            tftInstance->drawString("Connecting & Streaming...", 14, respY + 14, 2);
 
             aiStreamingActive = true;
             KryonCloudAI::stream(
                 aiConsolePrompt,
-                [](const String& token) {
+                [wrapW, wrapH, respY, maxLines](const String& token) {
                     if (tftInstance) {
                         aiConsoleResponse += token;
-                        int totalL = getTextLineCount(aiConsoleResponse, 212, 2);
-                        aiScrollOffset = (totalL > 7) ? (totalL - 7) : 0;
-                        tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                        drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+                        int totalL = getTextLineCount(aiConsoleResponse, wrapW, 2);
+                        aiScrollOffset = (totalL > maxLines) ? (totalL - maxLines) : 0;
+                        tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                        drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
                     }
                 },
-                [](const String& fullText, const AiUsageStats& usage) {
+                [wrapW, wrapH, respY, maxLines](const String& fullText, const AiUsageStats& usage) {
                     aiConsoleResponse = fullText;
                     aiStreamingActive = false;
-                    int totalL = getTextLineCount(aiConsoleResponse, 212, 2);
-                    aiScrollOffset = (totalL > 7) ? (totalL - 7) : 0;
+                    int totalL = getTextLineCount(aiConsoleResponse, wrapW, 2);
+                    aiScrollOffset = (totalL > maxLines) ? (totalL - maxLines) : 0;
                     if (tftInstance) {
-                        tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                        drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+                        tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                        drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
                     }
                 },
-                [](const String& err) {
+                [wrapW, wrapH, respY](const String& err) {
                     aiConsoleResponse = "Error: " + err;
                     aiStreamingActive = false;
                     if (tftInstance) {
-                        tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                        drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, 0);
+                        tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                        drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, 0);
                     }
                 }
             );
             drawKryonAIScreen();
             return;
-        } else if (x >= 96 && x <= 144) {
+        } else if (x >= 88 && x <= 134) {
             // Clear
             aiConsoleResponse = "Ready. Tap 'Ask AI' or tap the prompt to edit.";
             aiScrollOffset = 0;
             drawKryonAIScreen();
             return;
-        } else if (x >= 148 && x <= 188) {
+        } else if (x >= 138 && x <= 174) {
             // UP button
             if (aiScrollOffset > 0) {
                 aiScrollOffset = max(0, aiScrollOffset - 2);
-                tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+                tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
             }
             return;
-        } else if (x >= 192 && x <= 236) {
+        } else if (x >= 178 && x <= 214) {
             // DN button
-            int totalL = getTextLineCount(aiConsoleResponse, 212, 2);
-            if (aiScrollOffset < totalL - 7) {
-                aiScrollOffset = min(totalL - 7, aiScrollOffset + 2);
-                tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+            int totalL = getTextLineCount(aiConsoleResponse, wrapW, 2);
+            if (aiScrollOffset < totalL - maxLines) {
+                aiScrollOffset = min(totalL - maxLines, aiScrollOffset + 2);
+                tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
             }
             return;
         }
     }
 
     // Tap in Response Window area to scroll smoothly
-    if (y >= 136 && y <= 282) {
-        int totalL = getTextLineCount(aiConsoleResponse, 212, 2);
-        if (y < 210) {
+    if (y >= respY && y <= respY + respH) {
+        int totalL = getTextLineCount(aiConsoleResponse, wrapW, 2);
+        if (y < respY + respH / 2) {
             // Tap top half -> Scroll UP
             if (aiScrollOffset > 0) {
                 aiScrollOffset = max(0, aiScrollOffset - 2);
-                tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+                tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
             }
         } else {
             // Tap bottom half -> Scroll DOWN
-            if (aiScrollOffset < totalL - 7) {
-                aiScrollOffset = min(totalL - 7, aiScrollOffset + 2);
-                tftInstance->fillRect(10, 152, 220, 126, CLOUD_CARD_BG);
-                drawWrappedText(aiConsoleResponse, 14, 154, 212, 120, TFT_WHITE, 2, aiScrollOffset);
+            if (aiScrollOffset < totalL - maxLines) {
+                aiScrollOffset = min(totalL - maxLines, aiScrollOffset + 2);
+                tftInstance->fillRect(10, respY + 14, wrapW, wrapH, CLOUD_CARD_BG);
+                drawWrappedText(aiConsoleResponse, 14, respY + 14, wrapW, wrapH, TFT_WHITE, 2, aiScrollOffset);
             }
         }
     }
@@ -652,7 +845,11 @@ void KryonCloudUI::handleKryonAITouch(uint16_t x, uint16_t y) {
 // 4. KRYONBEAM MESSENGER SCREEN (Direct Mailbox + Paginated #public Stream)
 // ============================================================================
 void KryonCloudUI::drawBeamScreen() {
-    tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
 
     if (beamViewingIndex >= 0) {
         drawBeamDetailModal();
@@ -670,35 +867,38 @@ void KryonCloudUI::drawBeamScreen() {
     }
 
     // Row 1: Scope Switcher (Mailbox vs #public Stream)
-    tftInstance->fillRoundRect(8, 60, 110, 24, 4, (!beamPublicScope) ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-    if (beamPublicScope) tftInstance->drawRoundRect(8, 60, 110, 24, 4, CLOUD_CARD_BORDER);
+    int pillW = (screenW - 24) / 2;
+    tftInstance->fillRoundRect(8, 60, pillW, 24, 4, (!beamPublicScope) ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
+    if (beamPublicScope) tftInstance->drawRoundRect(8, 60, pillW, 24, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, (!beamPublicScope) ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Direct Mailbox", 63, 72, 2);
+    tftInstance->drawString("Direct Mailbox", 8 + pillW / 2, 72, 2);
 
-    tftInstance->fillRoundRect(122, 60, 110, 24, 4, beamPublicScope ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-    if (!beamPublicScope) tftInstance->drawRoundRect(122, 60, 110, 24, 4, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(8 + pillW + 8, 60, pillW, 24, 4, beamPublicScope ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
+    if (!beamPublicScope) tftInstance->drawRoundRect(8 + pillW + 8, 60, pillW, 24, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, beamPublicScope ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-    tftInstance->drawString("#public Stream", 177, 72, 2);
+    tftInstance->drawString("#public Stream", 8 + pillW + 8 + pillW / 2, 72, 2);
 
     // Row 2: Action Buttons
-    tftInstance->fillRoundRect(8, 88, 72, 22, 4, CLOUD_ACCENT_BLUE);
+    int bW = (screenW - 32) / 3;
+    tftInstance->fillRoundRect(8, 88, bW, 22, 4, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
-    tftInstance->drawString("Compose", 44, 99, 2);
+    tftInstance->drawString("Compose", 8 + bW / 2, 99, 2);
 
-    tftInstance->fillRoundRect(84, 88, 72, 22, 4, CLOUD_PILL_INACT);
-    tftInstance->drawRoundRect(84, 88, 72, 22, 4, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(8 + bW + 8, 88, bW, 22, 4, CLOUD_PILL_INACT);
+    tftInstance->drawRoundRect(8 + bW + 8, 88, bW, 22, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_PILL_INACT);
-    tftInstance->drawString("Refresh", 120, 99, 2);
+    tftInstance->drawString("Refresh", 8 + bW + 8 + bW / 2, 99, 2);
 
+    int b3X = 8 + 2 * (bW + 8);
     if (!beamPublicScope) {
-        tftInstance->fillRoundRect(160, 88, 72, 22, 4, 0x6000);
+        tftInstance->fillRoundRect(b3X, 88, bW, 22, 4, 0x6000);
         tftInstance->setTextColor(TFT_WHITE, 0x6000);
-        tftInstance->drawString("Clear All", 196, 99, 2);
+        tftInstance->drawString("Clear All", b3X + bW / 2, 99, 2);
     } else {
-        tftInstance->fillRoundRect(160, 88, 72, 22, 4, 0x03E0);
+        tftInstance->fillRoundRect(b3X, 88, bW, 22, 4, 0x03E0);
         tftInstance->setTextColor(TFT_WHITE, 0x03E0);
-        tftInstance->drawString("Broadcast", 196, 99, 2);
+        tftInstance->drawString("Broadcast", b3X + bW / 2, 99, 2);
     }
 
     // Status Toast Banner (e.g. "Message Sent Successfully!")
@@ -706,12 +906,17 @@ void KryonCloudUI::drawBeamScreen() {
     if (beamStatusToast.length() > 0) {
         bool isErr = beamStatusToast.indexOf("Failed") >= 0;
         uint16_t toastBg = isErr ? TFT_RED : 0x03E0;
-        tftInstance->fillRoundRect(8, 112, 224, 20, 4, toastBg);
+        tftInstance->fillRoundRect(8, 112, screenW - 16, 20, 4, toastBg);
         tftInstance->setTextColor(TFT_WHITE, toastBg);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString(beamStatusToast.c_str(), 120, 122, 2);
+        tftInstance->drawString(beamStatusToast.c_str(), screenW / 2, 122, 2);
         listY = 136;
     }
+
+    int cardW = screenW - 16;
+    int cardH = isLandscape ? 34 : 40;
+    int cardGap = isLandscape ? 38 : 44;
+    int maxMsgs = isLandscape ? 2 : 3;
 
     // Messages Area
     if (!beamPublicScope) {
@@ -719,21 +924,21 @@ void KryonCloudUI::drawBeamScreen() {
         if (!beamInboxLoaded) {
             tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Checking Mailbox...", 120, 180, 2);
+            tftInstance->drawString("Checking Mailbox...", screenW / 2, 160, 2);
             beamInboxLoaded = KryonCloudManager::pollBeamInbox(cachedBeamMessages, 2);
-            tftInstance->fillRect(0, listY, 240, 260 - listY, CLOUD_BG);
+            tftInstance->fillRect(0, listY, screenW, screenH - listY, CLOUD_BG);
         }
 
         if (cachedBeamMessages.empty()) {
             tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("No Direct Messages", 120, 175, 2);
-            tftInstance->drawString("Tap 'Compose' to send @handle", 120, 198, 2);
+            tftInstance->drawString("No Direct Messages", screenW / 2, 165, 2);
+            tftInstance->drawString("Tap 'Compose' to send @handle", screenW / 2, 188, 2);
         } else {
             int y = listY;
-            for (size_t i = 0; i < 3 && i < cachedBeamMessages.size(); i++) {
-                tftInstance->fillRoundRect(8, y, 224, 40, 4, CLOUD_CARD_BG);
-                tftInstance->drawRoundRect(8, y, 224, 40, 4, CLOUD_CARD_BORDER);
+            for (size_t i = 0; i < (size_t)maxMsgs && i < cachedBeamMessages.size(); i++) {
+                tftInstance->fillRoundRect(8, y, cardW, cardH, 4, CLOUD_CARD_BG);
+                tftInstance->drawRoundRect(8, y, cardW, cardH, 4, CLOUD_CARD_BORDER);
 
                 tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
                 tftInstance->setTextDatum(TL_DATUM);
@@ -745,14 +950,17 @@ void KryonCloudUI::drawBeamScreen() {
                 else if (cachedBeamMessages[i].msgType == "COMMAND") badgeColor = TFT_ORANGE;
 
                 tftInstance->setTextColor(badgeColor, CLOUD_CARD_BG);
-                tftInstance->drawString(("[" + cachedBeamMessages[i].msgType + "]").c_str(), 150, y + 4, 2);
+                tftInstance->setTextDatum(TR_DATUM);
+                tftInstance->drawString(("[" + cachedBeamMessages[i].msgType + "]").c_str(), cardW, y + 4, 2);
 
                 tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+                tftInstance->setTextDatum(TL_DATUM);
                 String snippet = cachedBeamMessages[i].content;
-                if (snippet.length() > 25) snippet = snippet.substring(0, 22) + "...";
-                tftInstance->drawString(snippet.c_str(), 14, y + 21, 2);
+                int maxSnip = isLandscape ? 36 : 25;
+                if ((int)snippet.length() > maxSnip) snippet = snippet.substring(0, maxSnip - 3) + "...";
+                tftInstance->drawString(snippet.c_str(), 14, y + (isLandscape ? 17 : 21), 2);
 
-                y += 44;
+                y += cardGap;
             }
         }
     } else {
@@ -760,131 +968,159 @@ void KryonCloudUI::drawBeamScreen() {
         if (!beamPublicLoaded) {
             tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Loading #public channel...", 120, 180, 2);
+            tftInstance->drawString("Loading #public channel...", screenW / 2, 160, 2);
             beamPublicLoaded = KryonCloudManager::pollPublicBeamMessages(cachedPublicMessages, "public", 3, beamPublicPage);
-            tftInstance->fillRect(0, listY, 240, 260 - listY, CLOUD_BG);
+            tftInstance->fillRect(0, listY, screenW, screenH - listY, CLOUD_BG);
         }
 
         if (cachedPublicMessages.empty()) {
             tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("No Messages on this page", 120, 175, 2);
-            tftInstance->drawString("Tap 'Broadcast' to post", 120, 198, 2);
+            tftInstance->drawString("No Messages on this page", screenW / 2, 165, 2);
+            tftInstance->drawString("Tap 'Broadcast' to post", screenW / 2, 188, 2);
         } else {
             int y = listY;
-            for (size_t i = 0; i < 3 && i < cachedPublicMessages.size(); i++) {
-                tftInstance->fillRoundRect(8, y, 224, 40, 4, CLOUD_CARD_BG);
-                tftInstance->drawRoundRect(8, y, 224, 40, 4, CLOUD_CARD_BORDER);
+            for (size_t i = 0; i < (size_t)maxMsgs && i < cachedPublicMessages.size(); i++) {
+                tftInstance->fillRoundRect(8, y, cardW, cardH, 4, CLOUD_CARD_BG);
+                tftInstance->drawRoundRect(8, y, cardW, cardH, 4, CLOUD_CARD_BORDER);
 
                 tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
                 tftInstance->setTextDatum(TL_DATUM);
                 tftInstance->drawString(cachedPublicMessages[i].senderHandle.c_str(), 14, y + 4, 2);
 
                 tftInstance->setTextColor(CLOUD_BAR_STR, CLOUD_CARD_BG);
-                tftInstance->drawString("#public", 160, y + 4, 2);
+                tftInstance->setTextDatum(TR_DATUM);
+                tftInstance->drawString("#public", cardW, y + 4, 2);
 
                 tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+                tftInstance->setTextDatum(TL_DATUM);
                 String snippet = cachedPublicMessages[i].content;
-                if (snippet.length() > 25) snippet = snippet.substring(0, 22) + "...";
-                tftInstance->drawString(snippet.c_str(), 14, y + 21, 2);
+                int maxSnip = isLandscape ? 36 : 25;
+                if ((int)snippet.length() > maxSnip) snippet = snippet.substring(0, maxSnip - 3) + "...";
+                tftInstance->drawString(snippet.c_str(), 14, y + (isLandscape ? 17 : 21), 2);
 
-                y += 44;
+                y += cardGap;
             }
         }
 
-        // Pagination Bar (y: 252 - 274)
+        // Pagination Bar
         bool hasPrev = (beamPublicPage > 1);
         bool hasNext = (cachedPublicMessages.size() == 3);
+        int pagY = isLandscape ? 190 : 252;
+        int pagH = 22;
 
-        tftInstance->fillRoundRect(8, 252, 64, 22, 3, hasPrev ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-        if (!hasPrev) tftInstance->drawRoundRect(8, 252, 64, 22, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRoundRect(8, pagY, 64, pagH, 3, hasPrev ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
+        if (!hasPrev) tftInstance->drawRoundRect(8, pagY, 64, pagH, 3, CLOUD_CARD_BORDER);
         tftInstance->setTextColor(hasPrev ? TFT_WHITE : CLOUD_TEXT_MUTED, hasPrev ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("< Prev", 40, 263, 2);
+        tftInstance->drawString("< Prev", 40, pagY + pagH / 2, 2);
 
         tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
-        tftInstance->drawString(("Page " + String(beamPublicPage)).c_str(), 120, 263, 2);
+        tftInstance->drawString(("Page " + String(beamPublicPage)).c_str(), screenW / 2, pagY + pagH / 2, 2);
 
-        tftInstance->fillRoundRect(168, 252, 64, 22, 3, hasNext ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-        if (!hasNext) tftInstance->drawRoundRect(168, 252, 64, 22, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRoundRect(screenW - 72, pagY, 64, pagH, 3, hasNext ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
+        if (!hasNext) tftInstance->drawRoundRect(screenW - 72, pagY, 64, pagH, 3, CLOUD_CARD_BORDER);
         tftInstance->setTextColor(hasNext ? TFT_WHITE : CLOUD_TEXT_MUTED, hasNext ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-        tftInstance->drawString("Next >", 200, 263, 2);
+        tftInstance->drawString("Next >", screenW - 40, pagY + pagH / 2, 2);
     }
 
     tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(("Node: " + KryonCloudManager::getBeamHandle() + (beamPublicScope ? " | #public" : " | Mailbox")).c_str(), 120, 304, 1);
+    tftInstance->drawString(("Node: " + KryonCloudManager::getBeamHandle() + (beamPublicScope ? " | #public" : " | Mailbox")).c_str(), screenW / 2, screenH - 12, 1);
 }
 
 void KryonCloudUI::drawBeamDetailModal() {
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
     const auto& msgList = beamPublicScope ? cachedPublicMessages : cachedBeamMessages;
     if (beamViewingIndex < 0 || (size_t)beamViewingIndex >= msgList.size()) return;
     const auto& msg = msgList[beamViewingIndex];
 
-    tftInstance->fillRoundRect(10, 60, 220, 235, 6, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(10, 60, 220, 235, 6, CLOUD_ACCENT_BLUE);
+    int modalW = screenW - 20;
+    int modalH = screenH - 66;
+    int modalX = 10;
+    int modalY = 60;
+
+    tftInstance->fillRoundRect(modalX, modalY, modalW, modalH, 6, CLOUD_CARD_BG);
+    tftInstance->drawRoundRect(modalX, modalY, modalW, modalH, 6, CLOUD_ACCENT_BLUE);
 
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
     tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString(("From: " + msg.senderHandle).c_str(), 18, 68, 2);
+    tftInstance->drawString(("From: " + msg.senderHandle).c_str(), modalX + 8, modalY + 6, 2);
 
     tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->drawString(beamPublicScope ? "Channel: #public" : ("Type: [" + msg.msgType + "]").c_str(), 18, 88, 2);
+    tftInstance->drawString(beamPublicScope ? "Channel: #public" : ("Type: [" + msg.msgType + "]").c_str(), modalX + 8, modalY + 24, 2);
 
     // Message Body (Safely bounded)
-    tftInstance->fillRoundRect(16, 110, 208, 130, 4, CLOUD_BG);
-    tftInstance->drawRoundRect(16, 110, 208, 130, 4, CLOUD_CARD_BORDER);
-    drawWrappedText(msg.content, 22, 116, 196, 118, TFT_WHITE, 2);
+    int bodyY = modalY + 44;
+    int bodyH = modalH - 78;
+    tftInstance->fillRoundRect(modalX + 6, bodyY, modalW - 12, bodyH, 4, CLOUD_BG);
+    tftInstance->drawRoundRect(modalX + 6, bodyY, modalW - 12, bodyH, 4, CLOUD_CARD_BORDER);
+    drawWrappedText(msg.content, modalX + 10, bodyY + 4, modalW - 20, bodyH - 8, TFT_WHITE, 2);
 
     // Close Button
-    tftInstance->fillRoundRect(16, 250, 208, 34, 4, CLOUD_ACCENT_BLUE);
+    int btnY = modalY + modalH - 30;
+    tftInstance->fillRoundRect(modalX + 6, btnY, modalW - 12, 26, 4, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("CLOSE MESSAGE", 120, 267, 2);
+    tftInstance->drawString("CLOSE MESSAGE", screenW / 2, btnY + 13, 2);
 }
 
 void KryonCloudUI::drawBeamComposeModal() {
-    tftInstance->fillRoundRect(10, 60, 220, 240, 6, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(10, 60, 220, 240, 6, CLOUD_ACCENT_BLUE);
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    int modalW = screenW - 20;
+    int modalH = screenH - 66;
+    int modalX = 10;
+    int modalY = 60;
+
+    tftInstance->fillRoundRect(modalX, modalY, modalW, modalH, 6, CLOUD_CARD_BG);
+    tftInstance->drawRoundRect(modalX, modalY, modalW, modalH, 6, CLOUD_ACCENT_BLUE);
 
     tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
     tftInstance->setTextDatum(TC_DATUM);
-    tftInstance->drawString(beamPublicScope ? "Public Broadcast" : "Direct Message", 120, 68, 2);
+    tftInstance->drawString(beamPublicScope ? "Public Broadcast" : "Direct Message", screenW / 2, modalY + 6, 2);
 
     // Recipient Box
     tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
     tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString(beamPublicScope ? "Channel:" : "Recipient (@handle):", 16, 90, 1);
+    tftInstance->drawString(beamPublicScope ? "Channel:" : "Recipient (@handle):", modalX + 8, modalY + 24, 1);
     
-    tftInstance->fillRoundRect(16, 104, 208, 26, 3, CLOUD_BG);
-    tftInstance->drawRoundRect(16, 104, 208, 26, 3, CLOUD_CARD_BORDER);
+    int targetBoxY = modalY + 38;
+    tftInstance->fillRoundRect(modalX + 6, targetBoxY, modalW - 12, 24, 3, CLOUD_BG);
+    tftInstance->drawRoundRect(modalX + 6, targetBoxY, modalW - 12, 24, 3, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
     if (beamPublicScope) {
-        tftInstance->drawString("#public (Global Channel)", 22, 110, 2);
+        tftInstance->drawString("#public (Global Channel)", modalX + 12, targetBoxY + 4, 2);
     } else {
         String dispTarget = (beamTargetHandle.length() > 0) ? beamTargetHandle : "Tap to enter @handle";
-        tftInstance->drawString(dispTarget.c_str(), 22, 110, 2);
+        tftInstance->drawString(dispTarget.c_str(), modalX + 12, targetBoxY + 4, 2);
     }
 
-    // Content Box (Taller and cleaner without type selector)
+    // Content Box
+    int bodyLabelY = targetBoxY + 28;
     tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
-    tftInstance->drawString("Message Body (Tap to type):", 16, 138, 1);
+    tftInstance->drawString("Message Body (Tap to type):", modalX + 8, bodyLabelY, 1);
 
-    tftInstance->fillRoundRect(16, 152, 208, 66, 3, CLOUD_BG);
-    tftInstance->drawRoundRect(16, 152, 208, 66, 3, CLOUD_CARD_BORDER);
+    int bodyY = bodyLabelY + 14;
+    int bodyH = modalH - (bodyY - modalY) - 34;
+    tftInstance->fillRoundRect(modalX + 6, bodyY, modalW - 12, bodyH, 3, CLOUD_BG);
+    tftInstance->drawRoundRect(modalX + 6, bodyY, modalW - 12, bodyH, 3, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_BG);
     String dispBody = (beamContent.length() > 0) ? beamContent : "Tap to type message...";
-    drawWrappedText(dispBody, 22, 158, 196, 54, TFT_WHITE, 2);
+    drawWrappedText(dispBody, modalX + 10, bodyY + 4, modalW - 20, bodyH - 8, TFT_WHITE, 2);
 
     // Send & Cancel
-    tftInstance->fillRoundRect(16, 230, 98, 32, 4, CLOUD_ACCENT_BLUE);
+    int btnY = modalY + modalH - 28;
+    int btnW = (modalW - 18) / 2;
+    tftInstance->fillRoundRect(modalX + 6, btnY, btnW, 24, 4, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("SEND", 65, 246, 2);
+    tftInstance->drawString("SEND", modalX + 6 + btnW / 2, btnY + 12, 2);
 
-    tftInstance->fillRoundRect(126, 230, 98, 32, 4, 0x6000);
+    tftInstance->fillRoundRect(modalX + 6 + btnW + 6, btnY, btnW, 24, 4, 0x6000);
     tftInstance->setTextColor(TFT_WHITE, 0x6000);
-    tftInstance->drawString("CANCEL", 175, 246, 2);
+    tftInstance->drawString("CANCEL", modalX + 6 + btnW + 6 + btnW / 2, btnY + 12, 2);
 }
 
 void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
@@ -893,8 +1129,18 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
         return;
     }
 
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    int modalW = screenW - 20;
+    int modalH = screenH - 66;
+    int modalX = 10;
+    int modalY = 60;
+
     if (beamViewingIndex >= 0) {
-        if (y >= 246 && y <= 286) {
+        int btnY = modalY + modalH - 32;
+        if (y >= btnY - 4 && y <= btnY + 30) {
             beamViewingIndex = -1;
             drawBeamScreen();
         }
@@ -902,30 +1148,36 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
     }
 
     if (beamComposing) {
+        int targetBoxY = modalY + 38;
         // Target handle tap (Direct messaging only)
-        if (y >= 100 && y <= 134 && !beamPublicScope) {
+        if (y >= targetBoxY && y <= targetBoxY + 26 && !beamPublicScope) {
             String res = MyKeyboard::getString(beamTargetHandle, "Recipient (@handle):", 32);
             drawTopNav();
-            tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+            tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
             if (res.length() > 0) beamTargetHandle = res;
             drawBeamComposeModal();
             return;
         }
 
         // Body tap
-        if (y >= 150 && y <= 222) {
+        int bodyLabelY = targetBoxY + 28;
+        int bodyY = bodyLabelY + 14;
+        int bodyH = modalH - (bodyY - modalY) - 34;
+        if (y >= bodyY && y <= bodyY + bodyH) {
             String res = MyKeyboard::getString(beamContent, "Message Body:", 120);
             drawTopNav();
-            tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+            tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
             if (res.length() > 0) beamContent = res;
             drawBeamComposeModal();
             return;
         }
 
         // Action Buttons (Send / Cancel)
-        if (y >= 226 && y <= 268) {
-            if (x >= 16 && x <= 114) {
-                // Send Message - always TEXT
+        int btnY = modalY + modalH - 30;
+        int btnW = (modalW - 18) / 2;
+        if (y >= btnY && y <= btnY + 28) {
+            if (x >= modalX + 6 && x <= modalX + 6 + btnW) {
+                // Send Message
                 bool ok = false;
                 if (beamPublicScope || beamTargetHandle == "#public" || beamTargetHandle.equalsIgnoreCase("public")) {
                     ok = KryonCloudManager::broadcastPublicBeam(beamContent, "public");
@@ -940,7 +1192,7 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
                 beamInboxLoaded = false;
                 beamPublicLoaded = false;
                 drawBeamScreen();
-            } else if (x >= 126 && x <= 224) {
+            } else if (x >= modalX + 6 + btnW + 6 && x <= modalX + 6 + 2 * btnW + 6) {
                 beamComposing = false;
                 drawBeamScreen();
             }
@@ -949,14 +1201,15 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
     }
 
     // Row 1: Scope Switcher touches (y: 58 - 84)
+    int pillW = (screenW - 24) / 2;
     if (y >= 58 && y <= 84) {
-        if (x >= 8 && x <= 118) {
+        if (x >= 8 && x <= 8 + pillW) {
             if (beamPublicScope) {
                 beamPublicScope = false;
                 beamInboxLoaded = false;
                 drawBeamScreen();
             }
-        } else if (x >= 122 && x <= 232) {
+        } else if (x >= 8 + pillW + 8 && x <= 8 + 2 * pillW + 8) {
             if (!beamPublicScope) {
                 beamPublicScope = true;
                 beamPublicLoaded = false;
@@ -967,9 +1220,10 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
         return;
     }
 
-    // Row 2: Action Bar Buttons (y: 86 - 114)
-    if (y >= 86 && y <= 114) {
-        if (x >= 8 && x <= 80) {
+    // Row 2: Action Buttons (y: 86 - 110)
+    int bW = (screenW - 32) / 3;
+    if (y >= 86 && y <= 110) {
+        if (x >= 8 && x <= 8 + bW) {
             // Compose
             beamComposing = true;
             if (beamPublicScope) {
@@ -978,12 +1232,12 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
                 beamTargetHandle = "";
             }
             drawBeamComposeModal();
-        } else if (x >= 84 && x <= 156) {
+        } else if (x >= 8 + bW + 8 && x <= 8 + 2 * bW + 8) {
             // Refresh
             if (beamPublicScope) beamPublicLoaded = false;
             else beamInboxLoaded = false;
             drawBeamScreen();
-        } else if (x >= 160 && x <= 232) {
+        } else if (x >= 8 + 2 * (bW + 8) && x <= 8 + 3 * bW + 16) {
             if (!beamPublicScope) {
                 // Clear All / Ack
                 std::vector<String> ackIds;
@@ -1003,8 +1257,9 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
         return;
     }
 
-    // Pagination Row touches for #public Stream (y: 248 - 278)
-    if (beamPublicScope && y >= 248 && y <= 278) {
+    // Pagination Row touches for #public Stream
+    int pagY = isLandscape ? 190 : 252;
+    if (beamPublicScope && y >= pagY - 4 && y <= pagY + 26) {
         if (x >= 8 && x <= 74) {
             if (beamPublicPage > 1) {
                 beamPublicPage--;
@@ -1012,7 +1267,7 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
                 drawBeamScreen();
             }
             return;
-        } else if (x >= 166 && x <= 232) {
+        } else if (x >= screenW - 74 && x <= screenW - 8) {
             if (cachedPublicMessages.size() == 3) {
                 beamPublicPage++;
                 beamPublicLoaded = false;
@@ -1024,10 +1279,12 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
 
     // Tap on a message card
     int startY = (beamStatusToast.length() > 0) ? 136 : 114;
-    if (y >= startY && y <= startY + 130) {
-        int idx = (y - startY) / 44;
+    int cardGap = isLandscape ? 38 : 44;
+    int maxMsgs = isLandscape ? 2 : 3;
+    if (y >= startY && y <= startY + maxMsgs * cardGap) {
+        int idx = (y - startY) / cardGap;
         const auto& list = beamPublicScope ? cachedPublicMessages : cachedBeamMessages;
-        if (idx >= 0 && (size_t)idx < list.size() && idx < 3) {
+        if (idx >= 0 && (size_t)idx < list.size() && idx < maxMsgs) {
             beamViewingIndex = idx;
             drawBeamDetailModal();
         }
@@ -1038,7 +1295,11 @@ void KryonCloudUI::handleBeamTouch(uint16_t x, uint16_t y) {
 // 5. CLOUD STORAGE EXPLORER SCREEN (With Device Config Backup & Restore)
 // ============================================================================
 void KryonCloudUI::drawStorageScreen() {
-    tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
 
     // Check toast expiration
     if (storageStatusToast.length() > 0 && millis() - storageStatusToastTime > 3500) {
@@ -1046,68 +1307,75 @@ void KryonCloudUI::drawStorageScreen() {
     }
 
     // Row 1: Scope Switcher (Shared vs Device)
-    tftInstance->fillRoundRect(8, 60, 110, 22, 4, storageScopeDevice ? CLOUD_PILL_INACT : CLOUD_ACCENT_BLUE);
-    if (storageScopeDevice) tftInstance->drawRoundRect(8, 60, 110, 22, 4, CLOUD_CARD_BORDER);
+    int pillW = (screenW - 24) / 2;
+    tftInstance->fillRoundRect(8, 60, pillW, 22, 4, storageScopeDevice ? CLOUD_PILL_INACT : CLOUD_ACCENT_BLUE);
+    if (storageScopeDevice) tftInstance->drawRoundRect(8, 60, pillW, 22, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, storageScopeDevice ? CLOUD_PILL_INACT : CLOUD_ACCENT_BLUE);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Shared (/cloud)", 63, 71, 2);
+    tftInstance->drawString("Shared (/cloud)", 8 + pillW / 2, 71, 2);
 
-    tftInstance->fillRoundRect(122, 60, 110, 22, 4, storageScopeDevice ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-    if (!storageScopeDevice) tftInstance->drawRoundRect(122, 60, 110, 22, 4, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(8 + pillW + 8, 60, pillW, 22, 4, storageScopeDevice ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
+    if (!storageScopeDevice) tftInstance->drawRoundRect(8 + pillW + 8, 60, pillW, 22, 4, CLOUD_CARD_BORDER);
     tftInstance->setTextColor(TFT_WHITE, storageScopeDevice ? CLOUD_ACCENT_BLUE : CLOUD_PILL_INACT);
-    tftInstance->drawString("Device (/device)", 177, 71, 2);
+    tftInstance->drawString("Device (/device)", 8 + pillW + 8 + pillW / 2, 71, 2);
 
     // Row 2: Backup & Restore Action Buttons
-    tftInstance->fillRoundRect(8, 86, 110, 22, 4, CLOUD_ACCENT_BLUE);
+    tftInstance->fillRoundRect(8, 86, pillW, 22, 4, CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
-    tftInstance->drawString("Create Backup", 63, 97, 2);
+    tftInstance->drawString("Create Backup", 8 + pillW / 2, 97, 2);
 
-    tftInstance->fillRoundRect(122, 86, 110, 22, 4, 0x03E0);
+    tftInstance->fillRoundRect(8 + pillW + 8, 86, pillW, 22, 4, 0x03E0);
     tftInstance->setTextColor(TFT_WHITE, 0x03E0);
-    tftInstance->drawString("Restore Backup", 177, 97, 2);
+    tftInstance->drawString("Restore Backup", 8 + pillW + 8 + pillW / 2, 97, 2);
 
     // Status Toast Banner
     int listY = 112;
     if (storageStatusToast.length() > 0) {
         bool isErr = (storageStatusToast.indexOf("Failed") >= 0 || storageStatusToast.indexOf("No ") >= 0);
         uint16_t toastBg = isErr ? TFT_RED : 0x03E0;
-        tftInstance->fillRoundRect(8, 110, 224, 20, 4, toastBg);
+        tftInstance->fillRoundRect(8, 110, screenW - 16, 20, 4, toastBg);
         tftInstance->setTextColor(TFT_WHITE, toastBg);
-        tftInstance->drawString(storageStatusToast.c_str(), 120, 120, 2);
+        tftInstance->drawString(storageStatusToast.c_str(), screenW / 2, 120, 2);
         listY = 134;
     }
 
     if (!manifestLoaded) {
         tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("Fetching Manifest...", 120, 180, 2);
+        tftInstance->drawString("Fetching Manifest...", screenW / 2, 160, 2);
         manifestLoaded = KryonCloudManager::fetchStorageManifest(cachedSharedFiles, cachedDeviceFiles);
-        tftInstance->fillRect(0, listY, 240, 260 - listY, CLOUD_BG);
+        tftInstance->fillRect(0, listY, screenW, screenH - listY, CLOUD_BG);
     }
 
     const auto& list = storageScopeDevice ? cachedDeviceFiles : cachedSharedFiles;
+    int cardW = screenW - 16;
+    int cardH = isLandscape ? 26 : 34;
+    int cardGap = isLandscape ? 30 : 38;
+    int maxFiles = isLandscape ? 3 : 4;
 
     if (list.empty()) {
         tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("No Files in this scope", 120, 170, 2);
-        tftInstance->drawString(storageScopeDevice ? "Tap 'Create Backup' to sync" : "Upload via Web Server", 120, 195, 2);
+        tftInstance->drawString("No Files in this scope", screenW / 2, 165, 2);
+        tftInstance->drawString(storageScopeDevice ? "Tap 'Create Backup' to sync" : "Upload via Web Server", screenW / 2, 188, 2);
     } else {
         int y = listY;
-        for (size_t i = 0; i < 4 && i < list.size(); i++) {
-            tftInstance->fillRoundRect(8, y, 224, 34, 4, CLOUD_CARD_BG);
-            tftInstance->drawRoundRect(8, y, 224, 34, 4, CLOUD_CARD_BORDER);
+        for (size_t i = 0; i < (size_t)maxFiles && i < list.size(); i++) {
+            tftInstance->fillRoundRect(8, y, cardW, cardH, 4, CLOUD_CARD_BG);
+            tftInstance->drawRoundRect(8, y, cardW, cardH, 4, CLOUD_CARD_BORDER);
 
             tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
             tftInstance->setTextDatum(TL_DATUM);
             String fn = list[i].filename;
-            if (fn.length() > 20) fn = fn.substring(0, 17) + "...";
-            tftInstance->drawString(fn.c_str(), 14, y + 8, 2);
+            int maxFn = isLandscape ? 30 : 20;
+            if ((int)fn.length() > maxFn) fn = fn.substring(0, maxFn - 3) + "...";
+            tftInstance->drawString(fn.c_str(), 14, y + (isLandscape ? 5 : 8), 2);
 
             tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
-            tftInstance->drawString((String(list[i].fileSize / 1024) + " KB").c_str(), 170, y + 8, 2);
+            tftInstance->setTextDatum(TR_DATUM);
+            tftInstance->drawString((String(list[i].fileSize / 1024) + " KB").c_str(), cardW, y + (isLandscape ? 5 : 8), 2);
 
-            y += 38;
+            y += cardGap;
         }
     }
 
@@ -1115,7 +1383,7 @@ void KryonCloudUI::drawStorageScreen() {
     const CloudLimits& lim = KryonCloudManager::getLimits();
     tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(("Storage: " + String(lim.storageUsedBytes / 1024) + " KB / " + String(lim.storageQuotaMb) + " MB").c_str(), 120, 302, 1);
+    tftInstance->drawString(("Storage: " + String(lim.storageUsedBytes / 1024) + " KB / " + String(lim.storageQuotaMb) + " MB").c_str(), screenW / 2, screenH - 12, 1);
 }
 
 void KryonCloudUI::handleStorageTouch(uint16_t x, uint16_t y) {
@@ -1124,12 +1392,17 @@ void KryonCloudUI::handleStorageTouch(uint16_t x, uint16_t y) {
         return;
     }
 
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+    int pillW = (screenW - 24) / 2;
+
     // Scope Switcher (y: 58 - 82)
     if (y >= 58 && y <= 82) {
-        if (x <= 118 && storageScopeDevice) {
+        if (x <= 8 + pillW && storageScopeDevice) {
             storageScopeDevice = false;
             drawStorageScreen();
-        } else if (x > 118 && !storageScopeDevice) {
+        } else if (x > 8 + pillW && !storageScopeDevice) {
             storageScopeDevice = true;
             drawStorageScreen();
         }
@@ -1138,13 +1411,15 @@ void KryonCloudUI::handleStorageTouch(uint16_t x, uint16_t y) {
 
     // Action Buttons (Create Backup & Restore Backup, y: 84 - 108)
     if (y >= 84 && y <= 108) {
-        if (x >= 8 && x <= 118) {
+        int modalW = min(260, screenW - 20);
+        int modalX = (screenW - modalW) / 2;
+        if (x >= 8 && x <= 8 + pillW) {
             // Create Backup
-            tftInstance->fillRoundRect(16, 130, 208, 65, 5, CLOUD_CARD_BG);
-            tftInstance->drawRoundRect(16, 130, 208, 65, 5, CLOUD_ACCENT_BLUE);
+            tftInstance->fillRoundRect(modalX, 130, modalW, 65, 5, CLOUD_CARD_BG);
+            tftInstance->drawRoundRect(modalX, 130, modalW, 65, 5, CLOUD_ACCENT_BLUE);
             tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Backing Up Configs...", 120, 162, 2);
+            tftInstance->drawString("Backing Up Configs...", screenW / 2, 162, 2);
 
             bool ok = KryonCloudManager::createDeviceBackup();
             storageStatusToast = ok ? "Backup Saved to Cloud!" : "Backup Failed / No Files";
@@ -1152,13 +1427,13 @@ void KryonCloudUI::handleStorageTouch(uint16_t x, uint16_t y) {
             manifestLoaded = false;
             drawStorageScreen();
             return;
-        } else if (x >= 122 && x <= 232) {
+        } else if (x >= 8 + pillW + 8 && x <= 8 + 2 * pillW + 8) {
             // Restore Backup
-            tftInstance->fillRoundRect(16, 130, 208, 65, 5, CLOUD_CARD_BG);
-            tftInstance->drawRoundRect(16, 130, 208, 65, 5, CLOUD_ACCENT_BLUE);
+            tftInstance->fillRoundRect(modalX, 130, modalW, 65, 5, CLOUD_CARD_BG);
+            tftInstance->drawRoundRect(modalX, 130, modalW, 65, 5, CLOUD_ACCENT_BLUE);
             tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Restoring Backup...", 120, 162, 2);
+            tftInstance->drawString("Restoring Backup...", screenW / 2, 162, 2);
 
             bool ok = KryonCloudManager::restoreDeviceBackup();
             storageStatusToast = ok ? "Backup Restored to Disk!" : "No Backup Found / Error";
@@ -1170,14 +1445,17 @@ void KryonCloudUI::handleStorageTouch(uint16_t x, uint16_t y) {
 
     // File item click -> Download
     int startY = (storageStatusToast.length() > 0) ? 134 : 112;
-    if (y >= startY && y <= 285) {
-        int idx = (y - startY) / 38;
+    int cardGap = isLandscape ? 30 : 38;
+    int cardH = isLandscape ? 26 : 34;
+    int maxFiles = isLandscape ? 3 : 4;
+    if (y >= startY && y <= startY + maxFiles * cardGap) {
+        int idx = (y - startY) / cardGap;
         const auto& list = storageScopeDevice ? cachedDeviceFiles : cachedSharedFiles;
-        if (idx >= 0 && idx < (int)list.size()) {
-            tftInstance->fillRect(8, startY + idx * 38, 224, 34, CLOUD_ACCENT_BLUE);
+        if (idx >= 0 && idx < (int)list.size() && idx < maxFiles) {
+            tftInstance->fillRect(8, startY + idx * cardGap, screenW - 16, cardH, CLOUD_ACCENT_BLUE);
             tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
             tftInstance->setTextDatum(MC_DATUM);
-            tftInstance->drawString("Downloading...", 120, startY + idx * 38 + 17, 2);
+            tftInstance->drawString("Downloading...", screenW / 2, startY + idx * cardGap + cardH / 2, 2);
 
             String localDest = "/local/cloud_" + list[idx].filename;
             KryonCloudManager::downloadCloudFile(list[idx].path, localDest, list[idx].scope);
@@ -1190,79 +1468,155 @@ void KryonCloudUI::handleStorageTouch(uint16_t x, uint16_t y) {
 // 6. USAGE & QUOTAS SCREEN
 // ============================================================================
 void KryonCloudUI::drawLimitsScreen() {
-    tftInstance->fillRect(0, 57, 240, 263, CLOUD_BG);
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
+    tftInstance->fillRect(0, 57, screenW, screenH - 57, CLOUD_BG);
 
     const CloudLimits& lim = KryonCloudManager::getLimits();
 
-    // AI Quota Card
-    tftInstance->fillRoundRect(8, 62, 224, 68, 5, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 62, 224, 68, 5, CLOUD_CARD_BORDER);
+    if (isLandscape) {
+        // High density dual-column layout for landscape
+        int colW = (screenW - 24) / 2;
+        int c1X = 8;
+        int c2X = c1X + colW + 8;
+        int cardH = 110;
 
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->setTextDatum(TL_DATUM);
-    tftInstance->drawString("Daily AI Limit", 16, 68, 2);
+        // Card 1: AI Quota
+        tftInstance->fillRoundRect(c1X, 62, colW, cardH, 5, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(c1X, 62, colW, cardH, 5, CLOUD_CARD_BORDER);
 
-    tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
-    tftInstance->drawString((String(lim.dailyAiUsed) + " / " + String(lim.dailyAiLimit) + " used").c_str(), 120, 68, 2);
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString("Daily AI Limit", c1X + 8, 68, 2);
 
-    int aiPct = (lim.dailyAiLimit > 0) ? (lim.dailyAiUsed * 206) / lim.dailyAiLimit : 0;
-    if (aiPct > 206) aiPct = 206;
-    uint16_t aiBarColor = (aiPct > 185) ? TFT_RED : ((aiPct > 154) ? TFT_ORANGE : 0x07E0);
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TR_DATUM);
+        tftInstance->drawString((String(lim.dailyAiUsed) + "/" + String(lim.dailyAiLimit)).c_str(), c1X + colW - 8, 68, 2);
 
-    tftInstance->drawRoundRect(16, 92, 208, 10, 3, CLOUD_CARD_BORDER);
-    tftInstance->fillRect(17, 93, 206, 8, CLOUD_TRACK_BG);
-    if (aiPct > 0) {
-        tftInstance->fillRoundRect(17, 93, aiPct, 8, 2, aiBarColor);
+        int barTrackW = colW - 16;
+        int aiPct = (lim.dailyAiLimit > 0) ? (lim.dailyAiUsed * barTrackW) / lim.dailyAiLimit : 0;
+        if (aiPct > barTrackW) aiPct = barTrackW;
+        uint16_t aiBarColor = (aiPct > (barTrackW * 85) / 100) ? TFT_RED : ((aiPct > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+
+        tftInstance->drawRoundRect(c1X + 8, 92, barTrackW, 8, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(c1X + 9, 93, barTrackW - 2, 6, CLOUD_TRACK_BG);
+        if (aiPct > 0) {
+            tftInstance->fillRoundRect(c1X + 9, 93, aiPct - 2, 6, 2, aiBarColor);
+        }
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString(("Left: " + String(lim.dailyAiRemaining)).c_str(), c1X + 8, 108, 1);
+
+        // Card 2: Storage Quota
+        tftInstance->fillRoundRect(c2X, 62, colW, cardH, 5, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(c2X, 62, colW, cardH, 5, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->drawString("Cloud Storage", c2X + 8, 68, 2);
+
+        tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TR_DATUM);
+        tftInstance->drawString((String(lim.storageQuotaMb) + " MB").c_str(), c2X + colW - 8, 68, 2);
+
+        int strPct = (lim.storageQuotaBytes > 0) ? (lim.storageUsedBytes * barTrackW) / lim.storageQuotaBytes : 0;
+        if (strPct > barTrackW) strPct = barTrackW;
+        uint16_t strBarColor = (strPct > (barTrackW * 85) / 100) ? TFT_RED : ((strPct > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+
+        tftInstance->drawRoundRect(c2X + 8, 92, barTrackW, 8, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(c2X + 9, 93, barTrackW - 2, 6, CLOUD_TRACK_BG);
+        if (strPct > 0) {
+            tftInstance->fillRoundRect(c2X + 9, 93, strPct - 2, 6, 2, strBarColor);
+        }
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString(("Free: " + String(lim.storageRemainingBytes / 1024) + " KB").c_str(), c2X + 8, 108, 1);
+
+        // Refresh Button
+        int btnY = 180;
+        tftInstance->fillRoundRect(8, btnY, screenW - 16, 32, 5, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("REFRESH QUOTAS", screenW / 2, btnY + 16, 2);
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
+        tftInstance->drawString("KryonCloud Account Gateway", screenW / 2, screenH - 12, 1);
+
+    } else {
+        int cardW = screenW - 16;
+        tftInstance->fillRoundRect(8, 62, cardW, 68, 5, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(8, 62, cardW, 68, 5, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->setTextDatum(TL_DATUM);
+        tftInstance->drawString("Daily AI Limit", 16, 68, 2);
+
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->drawString((String(lim.dailyAiUsed) + " / " + String(lim.dailyAiLimit) + " used").c_str(), cardW - 90, 68, 2);
+
+        int barTrackW = cardW - 16;
+        int aiPct = (lim.dailyAiLimit > 0) ? (lim.dailyAiUsed * barTrackW) / lim.dailyAiLimit : 0;
+        if (aiPct > barTrackW) aiPct = barTrackW;
+        uint16_t aiBarColor = (aiPct > (barTrackW * 85) / 100) ? TFT_RED : ((aiPct > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+
+        tftInstance->drawRoundRect(16, 92, barTrackW, 10, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(17, 93, barTrackW - 2, 8, CLOUD_TRACK_BG);
+        if (aiPct > 0) {
+            tftInstance->fillRoundRect(17, 93, aiPct - 2, 8, 2, aiBarColor);
+        }
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->drawString(("Remaining Today: " + String(lim.dailyAiRemaining) + " requests").c_str(), 16, 110, 1);
+
+        // Storage Quota Card
+        tftInstance->fillRoundRect(8, 136, cardW, 68, 5, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(8, 136, cardW, 68, 5, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->drawString("Cloud Storage", 16, 142, 2);
+
+        tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
+        tftInstance->drawString((String(lim.storageUsedBytes / 1024) + " KB / " + String(lim.storageQuotaMb) + " MB").c_str(), cardW - 110, 142, 2);
+
+        int strPct = (lim.storageQuotaBytes > 0) ? (lim.storageUsedBytes * barTrackW) / lim.storageQuotaBytes : 0;
+        if (strPct > barTrackW) strPct = barTrackW;
+        uint16_t strBarColor = (strPct > (barTrackW * 85) / 100) ? TFT_RED : ((strPct > (barTrackW * 70) / 100) ? TFT_ORANGE : 0x07E0);
+
+        tftInstance->drawRoundRect(16, 166, barTrackW, 10, 3, CLOUD_CARD_BORDER);
+        tftInstance->fillRect(17, 167, barTrackW - 2, 8, CLOUD_TRACK_BG);
+        if (strPct > 0) {
+            tftInstance->fillRoundRect(17, 167, strPct - 2, 8, 2, strBarColor);
+        }
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
+        tftInstance->drawString(("Free Space: " + String(lim.storageRemainingBytes / 1024) + " KB remaining").c_str(), 16, 184, 1);
+
+        // Reset Schedule & Health Card
+        tftInstance->fillRoundRect(8, 210, cardW, 44, 5, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(8, 210, cardW, 44, 5, CLOUD_CARD_BORDER);
+
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->drawString("Quota Reset:", 16, 216, 1);
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
+        tftInstance->drawString("Daily at 00:00 UTC", 90, 216, 1);
+
+        tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
+        tftInstance->drawString("Account Tier:", 16, 234, 1);
+        tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
+        tftInstance->drawString("Verified Hardware Node", 90, 234, 1);
+
+        // Refresh Quota Button
+        tftInstance->fillRoundRect(8, 260, cardW, 32, 5, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("REFRESH QUOTAS", screenW / 2, 276, 2);
+
+        tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
+        tftInstance->drawString("KryonCloud Account Gateway", screenW / 2, 304, 1);
     }
-
-    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
-    tftInstance->drawString(("Remaining Today: " + String(lim.dailyAiRemaining) + " requests").c_str(), 16, 110, 1);
-
-    // Storage Quota Card
-    tftInstance->fillRoundRect(8, 136, 224, 68, 5, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 136, 224, 68, 5, CLOUD_CARD_BORDER);
-
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->drawString("Cloud Storage", 16, 142, 2);
-
-    tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
-    tftInstance->drawString((String(lim.storageUsedBytes / 1024) + " KB / " + String(lim.storageQuotaMb) + " MB").c_str(), 110, 142, 2);
-
-    int strPct = (lim.storageQuotaBytes > 0) ? (lim.storageUsedBytes * 206) / lim.storageQuotaBytes : 0;
-    if (strPct > 206) strPct = 206;
-    uint16_t strBarColor = (strPct > 185) ? TFT_RED : ((strPct > 154) ? TFT_ORANGE : 0x07E0);
-
-    tftInstance->drawRoundRect(16, 166, 208, 10, 3, CLOUD_CARD_BORDER);
-    tftInstance->fillRect(17, 167, 206, 8, CLOUD_TRACK_BG);
-    if (strPct > 0) {
-        tftInstance->fillRoundRect(17, 167, strPct, 8, 2, strBarColor);
-    }
-
-    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_CARD_BG);
-    tftInstance->drawString(("Free Space: " + String(lim.storageRemainingBytes / 1024) + " KB remaining").c_str(), 16, 184, 1);
-
-    // Reset Schedule & Health Card
-    tftInstance->fillRoundRect(8, 210, 224, 44, 5, CLOUD_CARD_BG);
-    tftInstance->drawRoundRect(8, 210, 224, 44, 5, CLOUD_CARD_BORDER);
-
-    tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
-    tftInstance->drawString("Quota Reset:", 16, 216, 1);
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_CARD_BG);
-    tftInstance->drawString("Daily at 00:00 UTC", 90, 216, 1);
-
-    tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
-    tftInstance->drawString("Account Tier:", 16, 234, 1);
-    tftInstance->setTextColor(TFT_GREEN, CLOUD_CARD_BG);
-    tftInstance->drawString("Verified Hardware Node", 90, 234, 1);
-
-    // Refresh Quota Button
-    tftInstance->fillRoundRect(8, 260, 224, 32, 5, CLOUD_ACCENT_BLUE);
-    tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("REFRESH QUOTAS", 120, 276, 2);
-
-    tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
-    tftInstance->drawString("KryonCloud Account Gateway", 120, 304, 1);
 }
 
 void KryonCloudUI::handleLimitsTouch(uint16_t x, uint16_t y) {
@@ -1271,7 +1625,11 @@ void KryonCloudUI::handleLimitsTouch(uint16_t x, uint16_t y) {
         return;
     }
 
-    if (y >= 260 && y <= 294) {
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+    int btnY = isLandscape ? 180 : 260;
+
+    if (y >= btnY && y <= btnY + 34) {
         KryonCloudManager::fetchAccountLimits();
         drawLimitsScreen();
     }
@@ -1281,87 +1639,86 @@ void KryonCloudUI::handleLimitsTouch(uint16_t x, uint16_t y) {
 // 7. BAN / APPEAL STATUS SCREEN
 // ============================================================================
 void KryonCloudUI::drawBanStatusScreen() {
+    int screenW = tftInstance->width();
+    int screenH = tftInstance->height();
+    bool isLandscape = (screenH < 260);
+
     tftInstance->fillScreen(CLOUD_BG);
 
     // Frame & Header
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, CLOUD_CARD_BORDER);
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, CLOUD_NAV_BG);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, cachedBanStatus.isBanned ? TFT_RED : CLOUD_ACCENT_BLUE);
+    tftInstance->drawRoundRect(3, 3, screenW - 6, screenH - 6, 5, CLOUD_CARD_BORDER);
+    tftInstance->fillRoundRect(6, 6, screenW - 12, 30, 5, CLOUD_NAV_BG);
+    tftInstance->drawRoundRect(6, 6, screenW - 12, 30, 5, cachedBanStatus.isBanned ? TFT_RED : CLOUD_ACCENT_BLUE);
     tftInstance->setTextColor(cachedBanStatus.isBanned ? TFT_RED : TFT_WHITE, CLOUD_NAV_BG);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(cachedBanStatus.isBanned ? "Account / Device Ban Notice" : "Security & Ban Status", 120, 21, 2);
+    tftInstance->drawString(cachedBanStatus.isBanned ? "Account / Device Ban Notice" : "Security & Ban Status", screenW / 2, 21, 2);
 
     if (cachedBanStatus.isBanned) {
         bool isDeviceBan = cachedBanStatus.deviceBanned && !cachedBanStatus.accountBanned;
+        int cardH = isLandscape ? (screenH - 85) : 226;
 
         // Card container
-        tftInstance->fillRoundRect(10, 42, 220, 226, 6, CLOUD_CARD_BG);
-        tftInstance->drawRoundRect(10, 42, 220, 226, 6, TFT_RED);
+        tftInstance->fillRoundRect(10, 42, screenW - 20, cardH, 6, CLOUD_CARD_BG);
+        tftInstance->drawRoundRect(10, 42, screenW - 20, cardH, 6, TFT_RED);
 
         tftInstance->setTextColor(TFT_RED, CLOUD_CARD_BG);
         tftInstance->setTextDatum(TC_DATUM);
-        tftInstance->drawString(isDeviceBan ? "DEVICE SUSPENDED" : "ACCOUNT SUSPENDED", 120, 48, 2);
+        tftInstance->drawString(isDeviceBan ? "DEVICE SUSPENDED" : "ACCOUNT SUSPENDED", screenW / 2, 48, 2);
 
         // Ban Reason
         tftInstance->setTextColor(TFT_YELLOW, CLOUD_CARD_BG);
         tftInstance->setTextDatum(TL_DATUM);
-        tftInstance->drawString("Reason:", 16, 72, 1);
+        tftInstance->drawString("Reason:", 16, 70, 1);
         String reasonStr = (cachedBanStatus.banReason.length() > 0) ? cachedBanStatus.banReason : "Terms of Service Violation";
-        drawWrappedText(reasonStr, 16, 86, 208, 32, TFT_WHITE, 1);
+        drawWrappedText(reasonStr, 16, 82, screenW - 32, 28, TFT_WHITE, 1);
 
         // Instruction Box
-        tftInstance->fillRoundRect(14, 122, 212, 140, 4, CLOUD_BG);
-        tftInstance->drawRoundRect(14, 122, 212, 140, 4, CLOUD_CARD_BORDER);
+        int instBoxY = isLandscape ? 112 : 122;
+        int instBoxH = isLandscape ? (cardH - (instBoxY - 42) - 8) : 140;
+        tftInstance->fillRoundRect(14, instBoxY, screenW - 28, instBoxH, 4, CLOUD_BG);
+        tftInstance->drawRoundRect(14, instBoxY, screenW - 28, instBoxH, 4, CLOUD_CARD_BORDER);
 
         tftInstance->setTextColor(TFT_YELLOW, CLOUD_BG);
         tftInstance->setTextDatum(TL_DATUM);
-        tftInstance->drawString("To submit an appeal:", 18, 128, 1);
+        tftInstance->drawString("To submit an appeal:", 18, instBoxY + 6, 1);
 
         tftInstance->setTextColor(TFT_WHITE, CLOUD_BG);
-        tftInstance->drawString("Please Login to your Kryon Account here:", 18, 144, 1);
-
-        tftInstance->setTextColor(CLOUD_BAR_STR, CLOUD_BG);
-        tftInstance->drawString("https://kryonos.harislab.tech/login", 18, 160, 1);
-
-        tftInstance->setTextColor(TFT_WHITE, CLOUD_BG);
-        if (isDeviceBan) {
-            tftInstance->drawString("go to connected device,", 18, 180, 1);
-            tftInstance->drawString("select this device and", 18, 194, 1);
-            tftInstance->drawString("submit appeal.", 18, 208, 1);
-        } else {
-            tftInstance->drawString("go to your account and", 18, 180, 1);
-            tftInstance->drawString("then submit appeal.", 18, 194, 1);
-        }
+        tftInstance->drawString("Login to Kryon Account: kryonos.harislab.tech", 18, instBoxY + 20, 1);
 
         tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
-        tftInstance->drawString(("Appeal Status: " + (cachedBanStatus.appealStatus.length() > 0 ? cachedBanStatus.appealStatus : "NONE")).c_str(), 18, 240, 1);
+        tftInstance->drawString(("Appeal: " + (cachedBanStatus.appealStatus.length() > 0 ? cachedBanStatus.appealStatus : "NONE")).c_str(), 18, instBoxY + 36, 1);
 
         // Exit button
-        tftInstance->fillRoundRect(10, 274, 220, 36, 5, CLOUD_ACCENT_BLUE);
+        int exitBtnY = screenH - 38;
+        tftInstance->fillRoundRect(10, exitBtnY, screenW - 20, 32, 5, CLOUD_ACCENT_BLUE);
         tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("EXIT TO LAUNCHER", 120, 292, 2);
+        tftInstance->drawString("EXIT TO LAUNCHER", screenW / 2, exitBtnY + 16, 2);
     } else {
         tftInstance->setTextColor(TFT_GREEN, CLOUD_BG);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("STATUS: ACTIVE / GOOD", 120, 100, 2);
+        tftInstance->drawString("STATUS: ACTIVE / GOOD", screenW / 2, 90, 2);
         tftInstance->setTextColor(CLOUD_TEXT_MUTED, CLOUD_BG);
-        tftInstance->drawString("No suspensions or bans.", 120, 130, 1);
+        tftInstance->drawString("No suspensions or bans.", screenW / 2, 115, 1);
 
-        tftInstance->fillRoundRect(20, 240, 200, 38, 5, CLOUD_ACCENT_BLUE);
+        int backBtnW = min(220, screenW - 40);
+        int backBtnX = (screenW - backBtnW) / 2;
+        int backBtnY = screenH - 50;
+        tftInstance->fillRoundRect(backBtnX, backBtnY, backBtnW, 36, 5, CLOUD_ACCENT_BLUE);
         tftInstance->setTextColor(TFT_WHITE, CLOUD_ACCENT_BLUE);
         tftInstance->setTextDatum(MC_DATUM);
-        tftInstance->drawString("< BACK TO OVERVIEW", 120, 259, 2);
+        tftInstance->drawString("< BACK TO OVERVIEW", screenW / 2, backBtnY + 18, 2);
     }
 }
 
 void KryonCloudUI::handleBanStatusTouch(uint16_t x, uint16_t y) {
+    int screenH = tftInstance->height();
     if (cachedBanStatus.isBanned) {
-        if (y >= 270 && y <= 314) {
+        if (y >= screenH - 44 && y <= screenH - 4) {
             currentState = 0; // STATE_LAUNCHER
         }
     } else {
-        if (y >= 235 && y <= 285) {
+        if (y >= screenH - 56 && y <= screenH - 10) {
             currentSubState = CLOUD_STATE_OVERVIEW;
             draw();
         }

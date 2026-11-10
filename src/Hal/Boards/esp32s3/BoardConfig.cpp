@@ -1,4 +1,4 @@
-#if !defined(TARGET_CARDPUTER) && !defined(TARGET_CYD) && !defined(TARGET_T_HMI)
+#if !defined(TARGET_CARDPUTER) && !defined(TARGET_CYD) && !defined(TARGET_T_HMI) && !defined(TARGET_T_DECK)
 
 #include "../Board.h"
 #include "BoardConfig.h"
@@ -36,11 +36,26 @@ void loadTouchCalibration(void) {
     }
 }
 
+static uint8_t s_esp32s3_bl = 100;
+
 void setBacklight(uint8_t brightness) {
 #if defined(TFT_BL)
     analogWrite(TFT_BL, brightness);
 #endif
 }
+
+void setBacklightLevel(uint8_t percent) {
+    s_esp32s3_bl = constrain(percent, 0, 100);
+    setBacklight((uint8_t)map(s_esp32s3_bl, 0, 100, 0, 255));
+}
+
+uint8_t getBacklightLevel(void) {
+    return s_esp32s3_bl;
+}
+
+void setKeyboardBacklight(bool enable) { (void)enable; }
+void setKeyboardBacklightLevel(uint8_t percent) { (void)percent; }
+uint8_t getKeyboardBacklightLevel(void) { return 0; }
 
 void setRGBLED(uint8_t, uint8_t, uint8_t, bool) {}
 
@@ -83,7 +98,9 @@ void deinitSD(void) {
 
 uint64_t getSDTotalBytes(void) {
     if (!FileSystem::isSDMounted()) return 0;
-    return SD.totalBytes();
+    uint64_t total = SD.totalBytes();
+    if (total == 0) total = SD.cardSize();
+    return total;
 }
 
 uint64_t getSDUsedBytes(void) {
@@ -104,5 +121,8 @@ bool isShiftActive(void) { return false; }
 bool isFnActive(void) { return false; }
 float getBatteryVoltage(void) { return 0.0f; }
 int getBatteryPercent(void) { return 0; }
+bool isChargerConnected(void) { return false; }
+int getEstimatedChargeTimeMins(void) { return 0; }
+int getEstimatedDischargeTimeMins(void) { return 0; }
 
 #endif // Non-target default

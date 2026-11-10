@@ -1,0 +1,12 @@
+{
+  "name": "FS Inspector & Tester",
+  "packageName": "com.kryonos.fstest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Comprehensive diagnostics and test suite for KryonOS File System APIs: Chunked reads, TypedArray binary I/O, atomic stat, cross-partition copying, SD guard, and recursive rmdir.",
+  "type": "Utility",
+  "category": "System",
+  "api": 3,
+  "main": "main.js"
+}
+

@@ -57,7 +57,7 @@ jobs:
           echo "Tag '${TAG}' is available. Proceeding to compile boards..."
 
   # =========================================================================
-  # JOB 2: Compile All 5 Boards Simultaneously (Only Runs if Tag is New)
+  # JOB 2: Compile All 4 Boards Simultaneously (Only Runs if Tag is New)
   # =========================================================================
   build:
     name: Compile ${{ matrix.board }}
@@ -67,11 +67,10 @@ jobs:
       fail-fast: false
       matrix:
         board:
+          - lilygo-t-deck
           - esp32-s3-devkitc-1-n16r8
-          - lilygo-t-hmi
           - m5stack-cardputer
-          - esp32-cyd-28
-          - esp32doit-devkit-v1
+          - lilygo-t-hmi
 
     steps:
       - name: Checkout Repository

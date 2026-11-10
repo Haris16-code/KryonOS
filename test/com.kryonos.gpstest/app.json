@@ -1,0 +1,13 @@
+{
+  "name": "GPS Navigator & Diagnostics",
+  "packageName": "com.kryonos.gpstest",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "Comprehensive diagnostics and navigation utility for LilyGO T-Deck Plus GPS APIs: Real-time satellite constellation, live WGS84 spatial coordinates, speed, bearing, offline atomic clock synchronization, geofence radial detection, and distance calculation.",
+  "type": "Utility",
+  "category": "Navigation",
+  "api": 3,
+  "permissions": ["location"],
+  "main": "main.js"
+}
+

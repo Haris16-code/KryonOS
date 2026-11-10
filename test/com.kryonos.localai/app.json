@@ -1,0 +1,11 @@
+{
+  "name": "Local AI Chat",
+  "packageName": "com.kryonos.localai",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "On-device INT8 Transformer neural chat powered by ESP32-S3 SIMD PIE vector acceleration and zero-copy Octal PSRAM.",
+  "type": "Utility",
+  "category": "Artificial Intelligence",
+  "api": 3,
+  "main": "main.js"
+}

@@ -5,6 +5,8 @@
 #include "../Hal/PWM/PWMEngine.h"
 #include "../Hal/I2C/I2CEngine.h"
 #include "../Hal/Crypto/CryptoEngine.h"
+#include "../Hal/Audio/AudioEngine.h"
+#include "../Hal/Graphics/ImageRenderer.h"
 #include "../Kernel/Services/NotificationManager.h"
 #include "../Kernel/Services/IPCManager.h"
 #include "../Kernel/Core/HarixKernel.h"
@@ -16,7 +18,18 @@
 #include "../Kernel/TimeManager.h"
 #include "../Kernel/Services/KryonCloud/KryonCloudAI.h"
 #include "../Kernel/Services/KryonCloud/KryonCloudManager.h"
+#include "../LocalAI/AIBindings.h"
+#include "../LocalAI/AIEngine.h"
+#include "../FileSystem/Dialogs/FilePickerDialog.h"
+#include "../Hal/Boards/Board.h"
+#include "../Hal/Bluetooth/BluetoothEngine.h"
+#include "../Hal/GPS/GPSEngine.h"
 #include <SPI.h>
+
+void js_init_bluetooth(duk_context *ctx);
+void js_init_gps(duk_context *ctx);
+void js_poll_gps(duk_context *ctx);
+void js_cleanup_gps(duk_context *ctx);
 #include <math.h>
 #include <esp_random.h>
 #include <esp_task_wdt.h>
@@ -72,7 +85,7 @@ void JSBindings::fatalErrorHandler(void *udata, const char *msg) {
     if (msg && strstr(msg, "alloc")) {
         logToAllSerials("out of memory\n");
         if (tftInstance) {
-            if (useSprite && tftSprite) tftSprite->fillScreen(TFT_RED); else tftInstance->fillScreen(TFT_RED);
+            if (useSprite && tftSprite) tftSprite->fillSprite(TFT_RED); else tftInstance->fillScreen(TFT_RED);
             if (useSprite && tftSprite) tftSprite->setTextColor(TFT_WHITE, TFT_RED); else tftInstance->setTextColor(TFT_WHITE, TFT_RED);
             if (useSprite && tftSprite) tftSprite->drawString("OUT OF MEMORY", 10, 10, 4); else tftInstance->drawString("OUT OF MEMORY", 10, 10, 4);
         }
@@ -963,14 +976,89 @@ duk_ret_t JSBindings::js_ai_status(duk_context *ctx) {
 }
 
 // =====================================================
+// Display Dimensions & Viewport Coordinate Helpers
+// =====================================================
+static constexpr int JS_LOGICAL_W = 240;
+static constexpr int JS_LOGICAL_H = 320;
+static bool s_jsNativeRes = true;
+
+static inline int jsPhysW() {
+    TFT_eSPI* t = JSBindings::getTFT();
+    if (t && t->width() > 0) return t->width();
+    return tft.width() > 0 ? tft.width() : JS_LOGICAL_W;
+}
+
+static inline int jsPhysH() {
+    TFT_eSPI* t = JSBindings::getTFT();
+    if (t && t->height() > 0) return t->height();
+    return tft.height() > 0 ? tft.height() : JS_LOGICAL_H;
+}
+
+static inline int scaleX(int x) {
+    if (s_jsNativeRes) return x;
+    int pw = jsPhysW();
+    return (pw == JS_LOGICAL_W) ? x : (x * pw + (JS_LOGICAL_W / 2)) / JS_LOGICAL_W;
+}
+
+static inline int scaleY(int y) {
+    if (s_jsNativeRes) return y;
+    int ph = jsPhysH();
+    return (ph == JS_LOGICAL_H) ? y : (y * ph + (JS_LOGICAL_H / 2)) / JS_LOGICAL_H;
+}
+
+static inline int scaleW(int x, int w) {
+    if (w <= 0) return 0;
+    if (s_jsNativeRes) return w;
+    int pw = jsPhysW();
+    if (pw == JS_LOGICAL_W) return w;
+    int sw = scaleX(x + w) - scaleX(x);
+    return (sw < 1) ? 1 : sw;
+}
+
+static inline int scaleH(int y, int h) {
+    if (h <= 0) return 0;
+    if (s_jsNativeRes) return h;
+    int ph = jsPhysH();
+    if (ph == JS_LOGICAL_H) return h;
+    int sh = scaleY(y + h) - scaleY(y);
+    return (sh < 1) ? 1 : sh;
+}
+
+static inline int scaleR(int r) {
+    if (r <= 0) return 0;
+    if (s_jsNativeRes) return r;
+    int pw = jsPhysW();
+    int ph = jsPhysH();
+    if (pw == JS_LOGICAL_W && ph == JS_LOGICAL_H) return r;
+    int rx = (r * pw + (JS_LOGICAL_W / 2)) / JS_LOGICAL_W;
+    int ry = (r * ph + (JS_LOGICAL_H / 2)) / JS_LOGICAL_H;
+    int sr = (rx + ry + 1) / 2;
+    return (sr < 1) ? 1 : sr;
+}
+
+static inline int scaleCornerR(int r) {
+    if (r <= 0) return 0;
+    if (s_jsNativeRes) return r;
+    int pw = jsPhysW();
+    int ph = jsPhysH();
+    if (pw == JS_LOGICAL_W && ph == JS_LOGICAL_H) return r;
+    int rx = (r * pw + (JS_LOGICAL_W / 2)) / JS_LOGICAL_W;
+    int ry = (r * ph + (JS_LOGICAL_H / 2)) / JS_LOGICAL_H;
+    int sr = (rx < ry) ? rx : ry;
+    return (sr < 1) ? 1 : sr;
+}
+
+// =====================================================
 // Double Buffering
 // =====================================================
 
 duk_ret_t JSBindings::js_createSprite(duk_context *ctx) {
     if (!tftInstance) return 0;
 
-    int w = duk_require_int(ctx, 0);
-    int h = duk_require_int(ctx, 1);
+    int reqW = duk_require_int(ctx, 0);
+    int reqH = duk_require_int(ctx, 1);
+    int w = scaleW(0, reqW);
+    int h = scaleH(0, reqH);
     
     if (tftSprite) {
         tftSprite->deleteSprite();
@@ -982,8 +1070,8 @@ duk_ret_t JSBindings::js_createSprite(duk_context *ctx) {
     
     void* ptr = nullptr;
     
-    // First try 16-bit color if we have plenty of contiguous RAM
-    if (ESP.getMaxAllocHeap() > (uint32_t)(w * h * 2 + 10000)) {
+    // First try 16-bit color (uses PSRAM automatically via ps_calloc when available)
+    if (psramFound() || ESP.getMaxAllocHeap() > (uint32_t)(w * h * 2 + 10000)) {
         tftSprite->setColorDepth(16);
         ptr = tftSprite->createSprite(w, h);
     }
@@ -1001,6 +1089,7 @@ duk_ret_t JSBindings::js_createSprite(duk_context *ctx) {
         return 1;
     }
     
+    tftSprite->fillSprite(0);
     duk_push_boolean(ctx, true);
     return 1;
 }
@@ -1017,8 +1106,8 @@ duk_ret_t JSBindings::js_deleteSprite(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_pushSprite(duk_context *ctx) {
     if (!tftInstance || !tftSprite) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
+    int x = scaleX(duk_require_int(ctx, 0));
+    int y = scaleY(duk_require_int(ctx, 1));
     tftSprite->pushSprite(x, y);
     return 0;
 }
@@ -1043,10 +1132,13 @@ TFT_eSprite* JSBindings::getActiveSprite() {
 
 duk_ret_t JSBindings::js_drawFastVLine(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int h = duk_require_int(ctx, 2);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lh = duk_require_int(ctx, 2);
     uint32_t color = duk_require_uint(ctx, 3);
+    int x = scaleX(lx);
+    int y = scaleY(ly);
+    int h = scaleH(ly, lh);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawFastVLine(x, y, h, color);
     else {
@@ -1058,10 +1150,13 @@ duk_ret_t JSBindings::js_drawFastVLine(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawFastHLine(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int w = duk_require_int(ctx, 2);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lw = duk_require_int(ctx, 2);
     uint32_t color = duk_require_uint(ctx, 3);
+    int x = scaleX(lx);
+    int y = scaleY(ly);
+    int w = scaleW(lx, lw);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawFastHLine(x, y, w, color);
     else {
@@ -1079,21 +1174,25 @@ duk_ret_t JSBindings::js_fillScreen(duk_context *ctx) {
     if (!tftInstance) return 0;
     uint32_t color = duk_require_uint(ctx, 0);
     TFT_eSprite* sp = getActiveSprite();
-    if (sp) sp->fillScreen(color);
+    if (sp) sp->fillSprite(color);
     else {
         tftInstance->fillScreen(color);
-        MIRROR_SHADOW(fillScreen(color));
+        MIRROR_SHADOW(fillSprite(color));
     }
     return 0;
 }
 
 duk_ret_t JSBindings::js_fillRect(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int w = duk_require_int(ctx, 2);
-    int h = duk_require_int(ctx, 3);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lw = duk_require_int(ctx, 2);
+    int lh = duk_require_int(ctx, 3);
     uint32_t color = duk_require_uint(ctx, 4);
+    int x = scaleX(lx);
+    int y = scaleY(ly);
+    int w = scaleW(lx, lw);
+    int h = scaleH(ly, lh);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->fillRect(x, y, w, h, color);
     else {
@@ -1105,11 +1204,15 @@ duk_ret_t JSBindings::js_fillRect(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawRect(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int w = duk_require_int(ctx, 2);
-    int h = duk_require_int(ctx, 3);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lw = duk_require_int(ctx, 2);
+    int lh = duk_require_int(ctx, 3);
     uint32_t color = duk_require_uint(ctx, 4);
+    int x = scaleX(lx);
+    int y = scaleY(ly);
+    int w = scaleW(lx, lw);
+    int h = scaleH(ly, lh);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawRect(x, y, w, h, color);
     else {
@@ -1121,10 +1224,10 @@ duk_ret_t JSBindings::js_drawRect(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawLine(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x0 = duk_require_int(ctx, 0);
-    int y0 = duk_require_int(ctx, 1);
-    int x1 = duk_require_int(ctx, 2);
-    int y1 = duk_require_int(ctx, 3);
+    int x0 = scaleX(duk_require_int(ctx, 0));
+    int y0 = scaleY(duk_require_int(ctx, 1));
+    int x1 = scaleX(duk_require_int(ctx, 2));
+    int y1 = scaleY(duk_require_int(ctx, 3));
     uint32_t color = duk_require_uint(ctx, 4);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawLine(x0, y0, x1, y1, color);
@@ -1137,8 +1240,8 @@ duk_ret_t JSBindings::js_drawLine(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawPixel(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
+    int x = scaleX(duk_require_int(ctx, 0));
+    int y = scaleY(duk_require_int(ctx, 1));
     uint32_t color = duk_require_uint(ctx, 2);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawPixel(x, y, color);
@@ -1151,9 +1254,9 @@ duk_ret_t JSBindings::js_drawPixel(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawCircle(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int r = duk_require_int(ctx, 2);
+    int x = scaleX(duk_require_int(ctx, 0));
+    int y = scaleY(duk_require_int(ctx, 1));
+    int r = scaleR(duk_require_int(ctx, 2));
     uint32_t color = duk_require_uint(ctx, 3);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawCircle(x, y, r, color);
@@ -1166,9 +1269,9 @@ duk_ret_t JSBindings::js_drawCircle(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_fillCircle(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int r = duk_require_int(ctx, 2);
+    int x = scaleX(duk_require_int(ctx, 0));
+    int y = scaleY(duk_require_int(ctx, 1));
+    int r = scaleR(duk_require_int(ctx, 2));
     uint32_t color = duk_require_uint(ctx, 3);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->fillCircle(x, y, r, color);
@@ -1181,12 +1284,12 @@ duk_ret_t JSBindings::js_fillCircle(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawTriangle(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x0 = duk_require_int(ctx, 0);
-    int y0 = duk_require_int(ctx, 1);
-    int x1 = duk_require_int(ctx, 2);
-    int y1 = duk_require_int(ctx, 3);
-    int x2 = duk_require_int(ctx, 4);
-    int y2 = duk_require_int(ctx, 5);
+    int x0 = scaleX(duk_require_int(ctx, 0));
+    int y0 = scaleY(duk_require_int(ctx, 1));
+    int x1 = scaleX(duk_require_int(ctx, 2));
+    int y1 = scaleY(duk_require_int(ctx, 3));
+    int x2 = scaleX(duk_require_int(ctx, 4));
+    int y2 = scaleY(duk_require_int(ctx, 5));
     uint32_t color = duk_require_uint(ctx, 6);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawTriangle(x0, y0, x1, y1, x2, y2, color);
@@ -1199,12 +1302,12 @@ duk_ret_t JSBindings::js_drawTriangle(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_fillTriangle(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x0 = duk_require_int(ctx, 0);
-    int y0 = duk_require_int(ctx, 1);
-    int x1 = duk_require_int(ctx, 2);
-    int y1 = duk_require_int(ctx, 3);
-    int x2 = duk_require_int(ctx, 4);
-    int y2 = duk_require_int(ctx, 5);
+    int x0 = scaleX(duk_require_int(ctx, 0));
+    int y0 = scaleY(duk_require_int(ctx, 1));
+    int x1 = scaleX(duk_require_int(ctx, 2));
+    int y1 = scaleY(duk_require_int(ctx, 3));
+    int x2 = scaleX(duk_require_int(ctx, 4));
+    int y2 = scaleY(duk_require_int(ctx, 5));
     uint32_t color = duk_require_uint(ctx, 6);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->fillTriangle(x0, y0, x1, y1, x2, y2, color);
@@ -1217,12 +1320,16 @@ duk_ret_t JSBindings::js_fillTriangle(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_drawRoundRect(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int w = duk_require_int(ctx, 2);
-    int h = duk_require_int(ctx, 3);
-    int r = duk_require_int(ctx, 4);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lw = duk_require_int(ctx, 2);
+    int lh = duk_require_int(ctx, 3);
+    int r = scaleCornerR(duk_require_int(ctx, 4));
     uint32_t color = duk_require_uint(ctx, 5);
+    int x = scaleX(lx);
+    int y = scaleY(ly);
+    int w = scaleW(lx, lw);
+    int h = scaleH(ly, lh);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->drawRoundRect(x, y, w, h, r, color);
     else {
@@ -1234,12 +1341,16 @@ duk_ret_t JSBindings::js_drawRoundRect(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_fillRoundRect(duk_context *ctx) {
     if (!tftInstance) return 0;
-    int x = duk_require_int(ctx, 0);
-    int y = duk_require_int(ctx, 1);
-    int w = duk_require_int(ctx, 2);
-    int h = duk_require_int(ctx, 3);
-    int r = duk_require_int(ctx, 4);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lw = duk_require_int(ctx, 2);
+    int lh = duk_require_int(ctx, 3);
+    int r = scaleCornerR(duk_require_int(ctx, 4));
     uint32_t color = duk_require_uint(ctx, 5);
+    int x = scaleX(lx);
+    int y = scaleY(ly);
+    int w = scaleW(lx, lw);
+    int h = scaleH(ly, lh);
     TFT_eSprite* sp = getActiveSprite();
     if (sp) sp->fillRoundRect(x, y, w, h, r, color);
     else {
@@ -1269,8 +1380,8 @@ static uint32_t read32(fs::File &f) {
 duk_ret_t JSBindings::js_drawBMP(duk_context *ctx) {
     if (!tftInstance) return 0;
     const char *path = duk_require_string(ctx, 0);
-    int x = duk_require_int(ctx, 1);
-    int y = duk_require_int(ctx, 2);
+    int x = scaleX(duk_require_int(ctx, 1));
+    int y = scaleY(duk_require_int(ctx, 2));
 
     fs::FS* targetFS = nullptr;
     String relPath = "";
@@ -1343,12 +1454,15 @@ duk_ret_t JSBindings::js_drawBMP(duk_context *ctx) {
 
     bmpFS.seek(imageOffset);
 
+    TFT_eSprite* sp = getActiveSprite();
+    int targetH = sp ? sp->height() : tftInstance->height();
+
     // Draw row by row
     for (int row = 0; row < bmpHeight; row++) {
         int drawY = flip ? (y + bmpHeight - 1 - row) : (y + row);
         
         // Skip drawing if out of bounds
-        if (drawY < 0 || drawY >= tftInstance->height()) {
+        if (drawY < 0 || drawY >= targetH) {
             bmpFS.seek(bmpFS.position() + rowSize);
             continue;
         }
@@ -1378,7 +1492,11 @@ duk_ret_t JSBindings::js_drawBMP(duk_context *ctx) {
             }
 
             int drawX = x + pixelsRead;
-            tftInstance->pushImage(drawX, drawY, pixelsToRead, 1, tftbuffer);
+            if (sp) {
+                sp->pushImage(drawX, drawY, pixelsToRead, 1, tftbuffer);
+            } else {
+                tftInstance->pushImage(drawX, drawY, pixelsToRead, 1, tftbuffer);
+            }
             
             pixelsRead += pixelsToRead;
         }
@@ -1397,14 +1515,119 @@ duk_ret_t JSBindings::js_drawBMP(duk_context *ctx) {
 }
 
 // =====================================================
+// Display Bindings - Images (PNG, JPEG, BMP)
+// =====================================================
+
+duk_ret_t JSBindings::js_drawImage(duk_context *ctx) {
+    if (!tftInstance) return 0;
+    const char *path = duk_require_string(ctx, 0);
+    int x = scaleX(duk_require_int(ctx, 1));
+    int y = scaleY(duk_require_int(ctx, 2));
+
+    uint8_t scale = 1;
+    bool autoFit = false;
+    int maxW = 0;
+    int maxH = 0;
+
+    if (duk_get_top(ctx) >= 4) {
+        if (duk_is_number(ctx, 3)) {
+            scale = (uint8_t)duk_get_int(ctx, 3);
+            if (scale < 1) scale = 1;
+        } else if (duk_is_object(ctx, 3)) {
+            if (duk_get_prop_string(ctx, 3, "scale")) {
+                if (duk_is_number(ctx, -1)) scale = (uint8_t)duk_get_int(ctx, -1);
+            }
+            duk_pop(ctx);
+            if (duk_get_prop_string(ctx, 3, "autoFit")) {
+                autoFit = duk_get_boolean(ctx, -1);
+            }
+            duk_pop(ctx);
+            if (duk_get_prop_string(ctx, 3, "maxWidth")) {
+                maxW = duk_get_int(ctx, -1);
+            } else if (duk_get_prop_string(ctx, 3, "width")) {
+                maxW = duk_get_int(ctx, -1);
+            }
+            duk_pop(ctx);
+            if (duk_get_prop_string(ctx, 3, "maxHeight")) {
+                maxH = duk_get_int(ctx, -1);
+            } else if (duk_get_prop_string(ctx, 3, "height")) {
+                maxH = duk_get_int(ctx, -1);
+            }
+            duk_pop(ctx);
+        }
+    }
+
+    bool res = ImageRenderer::drawImage(path, x, y, scale, autoFit, maxW, maxH);
+    duk_push_boolean(ctx, res);
+    return 1;
+}
+
+duk_ret_t JSBindings::js_drawPNG(duk_context *ctx) {
+    if (!tftInstance) return 0;
+    const char *path = duk_require_string(ctx, 0);
+    int x = scaleX(duk_require_int(ctx, 1));
+    int y = scaleY(duk_require_int(ctx, 2));
+    bool enableAlpha = true;
+    if (duk_get_top(ctx) >= 4) {
+        enableAlpha = duk_require_boolean(ctx, 3);
+    }
+    bool res = ImageRenderer::drawPNG(path, x, y, enableAlpha);
+    duk_push_boolean(ctx, res);
+    return 1;
+}
+
+duk_ret_t JSBindings::js_drawJPG(duk_context *ctx) {
+    if (!tftInstance) return 0;
+    const char *path = duk_require_string(ctx, 0);
+    int x = scaleX(duk_require_int(ctx, 1));
+    int y = scaleY(duk_require_int(ctx, 2));
+    uint8_t scale = 1;
+    if (duk_get_top(ctx) >= 4) {
+        scale = (uint8_t)duk_require_int(ctx, 3);
+        if (scale < 1) scale = 1;
+    }
+    bool res = ImageRenderer::drawJPG(path, x, y, scale);
+    duk_push_boolean(ctx, res);
+    return 1;
+}
+
+duk_ret_t JSBindings::js_getImageInfo(duk_context *ctx) {
+    const char *path = duk_require_string(ctx, 0);
+    ImageInfo info;
+    memset(&info, 0, sizeof(info));
+    bool ok = ImageRenderer::getImageInfo(path, info);
+
+    duk_push_object(ctx);
+    duk_push_boolean(ctx, ok && info.valid);
+    duk_put_prop_string(ctx, -2, "valid");
+    duk_push_int(ctx, info.width);
+    duk_put_prop_string(ctx, -2, "width");
+    duk_push_int(ctx, info.height);
+    duk_put_prop_string(ctx, -2, "height");
+    duk_push_int(ctx, info.bitsPerPixel);
+    duk_put_prop_string(ctx, -2, "bpp");
+    duk_push_boolean(ctx, info.hasAlpha);
+    duk_put_prop_string(ctx, -2, "hasAlpha");
+
+    const char* typeStr = "unknown";
+    if (info.type == IMAGE_TYPE_PNG) typeStr = "png";
+    else if (info.type == IMAGE_TYPE_JPEG) typeStr = "jpeg";
+    else if (info.type == IMAGE_TYPE_BMP) typeStr = "bmp";
+    duk_push_string(ctx, typeStr);
+    duk_put_prop_string(ctx, -2, "type");
+
+    return 1;
+}
+
+// =====================================================
 // Display Bindings - Text
 // =====================================================
 
 duk_ret_t JSBindings::js_drawString(duk_context *ctx) {
     if (!tftInstance) return 0;
     const char *str = duk_require_string(ctx, 0);
-    int x = duk_require_int(ctx, 1);
-    int y = duk_require_int(ctx, 2);
+    int x = scaleX(duk_require_int(ctx, 1));
+    int y = scaleY(duk_require_int(ctx, 2));
     int font = duk_get_int_default(ctx, 3, 2); // default to font 2
     tftInstance->setTextDatum(TL_DATUM);
     TFT_eSprite* sp = getActiveSprite();
@@ -1474,14 +1697,12 @@ duk_ret_t JSBindings::js_color(duk_context *ctx) {
 }
 
 duk_ret_t JSBindings::js_screenWidth(duk_context *ctx) {
-    if (!tftInstance) { duk_push_int(ctx, 240); return 1; }
-    duk_push_int(ctx, tftInstance->width());
+    duk_push_int(ctx, s_jsNativeRes ? jsPhysW() : JS_LOGICAL_W);
     return 1;
 }
 
 duk_ret_t JSBindings::js_screenHeight(duk_context *ctx) {
-    if (!tftInstance) { duk_push_int(ctx, 320); return 1; }
-    duk_push_int(ctx, tftInstance->height());
+    duk_push_int(ctx, s_jsNativeRes ? jsPhysH() : JS_LOGICAL_H);
     return 1;
 }
 
@@ -1493,22 +1714,35 @@ duk_ret_t JSBindings::js_screenHeight(duk_context *ctx) {
 
 // Returns an object { x, y, touched } 
 duk_ret_t JSBindings::js_getTouch(duk_context *ctx) {
-    uint16_t tx, ty;
+    uint16_t rawX = 0, rawY = 0;
     bool touched = false;
+    int lx = 0, ly = 0;
     if (tftInstance) {
-        touched = TouchDriver::getTouch(&tx, &ty);
+        touched = TouchDriver::getTouch(&rawX, &rawY);
+        int pw = jsPhysW();
+        int ph = jsPhysH();
         
-        // Hidden OS Exit Button (Top Right Corner)
-        if (touched && tx >= 200 && ty <= 40) {
+        // Hidden OS Exit Button (Top Right Corner: 40x40 area)
+        if (touched && (int)rawX >= (pw - 40) && (int)rawY <= 40) {
             duk_error(ctx, DUK_ERR_ERROR, "OS_EXIT");
             return 0; // Unreachable, but good practice
+        }
+
+        if (touched) {
+            if (s_jsNativeRes) {
+                lx = (int)rawX;
+                ly = (int)rawY;
+            } else {
+                lx = (pw == JS_LOGICAL_W) ? (int)rawX : ((int)rawX * JS_LOGICAL_W) / pw;
+                ly = (ph == JS_LOGICAL_H) ? (int)rawY : ((int)rawY * JS_LOGICAL_H) / ph;
+            }
         }
     }
     
     duk_push_object(ctx);
-    duk_push_int(ctx, touched ? (int)tx : 0);
+    duk_push_int(ctx, touched ? lx : 0);
     duk_put_prop_string(ctx, -2, "x");
-    duk_push_int(ctx, touched ? (int)ty : 0);
+    duk_push_int(ctx, touched ? ly : 0);
     duk_put_prop_string(ctx, -2, "y");
     duk_push_boolean(ctx, touched ? 1 : 0);
     duk_put_prop_string(ctx, -2, "touched");
@@ -1538,6 +1772,9 @@ duk_ret_t JSBindings::js_delay(duk_context *ctx) {
     HTTPServerEngine::poll(ctx);
     PWMEngine::poll();
     IPCManager::dispatchPendingMessages(ctx);
+    BluetoothEngine::poll();
+    LocalAI::AIEngine::getInstance().poll(ctx);
+    js_poll_gps(ctx);
     if (tftInstance) {
         NotificationManager::updateAndRender(tftInstance);
     }
@@ -1674,6 +1911,12 @@ duk_ret_t JSBindings::js_getInfo(duk_context *ctx) {
     duk_push_string(ctx, ESP.getChipModel());
     duk_put_prop_string(ctx, -2, "chipModel");
 
+    duk_push_string(ctx, getBoardModelName());
+    duk_put_prop_string(ctx, -2, "deviceName");
+
+    duk_push_string(ctx, getBoardModelName());
+    duk_put_prop_string(ctx, -2, "boardModel");
+
     duk_push_uint(ctx, ESP.getChipCores());
     duk_put_prop_string(ctx, -2, "chipCores");
 
@@ -1746,32 +1989,41 @@ duk_ret_t JSBindings::js_getAPILevel(duk_context *ctx) {
 
 void JSBindings::showWiFiAlertModal() {
     if (!tftInstance) return;
+    int sw = tftInstance->width();
+    int sh = tftInstance->height();
+    int boxW = 200;
+    int boxH = 180;
+    int boxX = (sw - boxW) / 2;
+    int boxY = (sh - boxH) / 2;
+    int cx = sw / 2;
     
-    tftInstance->fillRoundRect(20, 70, 200, 180, 8, TFT_BLACK);
-    tftInstance->drawRoundRect(20, 70, 200, 180, 8, TFT_RED);
+    tftInstance->fillRoundRect(boxX, boxY, boxW, boxH, 8, TFT_BLACK);
+    tftInstance->drawRoundRect(boxX, boxY, boxW, boxH, 8, TFT_RED);
     
     // Header
-    tftInstance->fillRoundRect(22, 72, 196, 32, 6, TFT_RED);
+    tftInstance->fillRoundRect(boxX + 2, boxY + 2, boxW - 4, 32, 6, TFT_RED);
     tftInstance->setTextColor(TFT_WHITE, TFT_RED);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("WiFi Not Connected", 120, 88, 2);
+    tftInstance->drawString("WiFi Not Connected", cx, boxY + 18, 2);
     
     // Body
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Please turn on WiFi", 120, 125, 2);
-    tftInstance->drawString("in Settings to connect", 120, 145, 2);
-    tftInstance->drawString("to the internet.", 120, 165, 2);
+    tftInstance->drawString("Please turn on WiFi", cx, boxY + 55, 2);
+    tftInstance->drawString("in Settings to connect", cx, boxY + 75, 2);
+    tftInstance->drawString("to the internet.", cx, boxY + 95, 2);
     
     // OK button
-    tftInstance->fillRoundRect(70, 195, 100, 36, 6, TFT_BLUE);
+    int btnX = cx - 50;
+    int btnY = boxY + 125;
+    tftInstance->fillRoundRect(btnX, btnY, 100, 36, 6, TFT_BLUE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLUE);
-    tftInstance->drawString("OK", 120, 213, 2);
+    tftInstance->drawString("OK", cx, btnY + 18, 2);
     
     unsigned long startModal = millis();
     uint16_t tx = 0, ty = 0;
     while (millis() - startModal < 3000) {
         if (TouchDriver::getTouch(&tx, &ty)) {
-            if (tx >= 60 && tx <= 180 && ty >= 185 && ty <= 240) {
+            if (tx >= (btnX - 10) && tx <= (btnX + 110) && ty >= (btnY - 10) && ty <= (btnY + 45)) {
                 while (TouchDriver::getTouch(&tx, &ty)) { delay(10); }
                 break;
             }
@@ -2238,6 +2490,7 @@ void JSBindings::cleanup(duk_context *ctx) {
     PWMEngine::reset();
     I2CEngine::reset();
     IPCManager::clearMessageCallback();
+    LocalAI::AIEngine::getInstance().unload();
     HTTPServerEngine::reset(ctx);
     for (auto* ws : g_activeWebSockets) {
         if (ws) {
@@ -2245,6 +2498,16 @@ void JSBindings::cleanup(duk_context *ctx) {
         }
     }
     g_activeWebSockets.clear();
+
+    if (BluetoothEngine::isEnabled()) {
+        BluetoothEngine::stopKeyboard();
+        BluetoothEngine::stopScan();
+        BluetoothEngine::stopAdvertising();
+        BluetoothEngine::stopServer();
+        BluetoothEngine::disable();
+    }
+
+    js_cleanup_gps(ctx);
 }
 
 // =====================================================
@@ -2380,6 +2643,7 @@ duk_ret_t JSBindings::js_http_notFound(duk_context *ctx) {
 
 static String s_sandboxRoot = "";
 static std::vector<String> s_sessionGrantedPackages;
+static std::vector<String> s_sessionLocationPackages;
 
 void JSBindings::setSandboxRoot(const String& root) {
     s_sandboxRoot = root;
@@ -2400,19 +2664,31 @@ void JSBindings::revokeSessionPermission(const String& pkg) {
             ++it;
         }
     }
+    for (auto it = s_sessionLocationPackages.begin(); it != s_sessionLocationPackages.end(); ) {
+        if (*it == pkg) {
+            it = s_sessionLocationPackages.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void JSBindings::clearAllSessionPermissions() {
     s_sessionGrantedPackages.clear();
+    s_sessionLocationPackages.clear();
 }
 
-static String getAppPackageName() {
+String JSBindings::getAppPackageName() {
     if (s_sandboxRoot.length() == 0) return "";
     String s = s_sandboxRoot;
     if (s.endsWith("/")) s = s.substring(0, s.length() - 1);
     int lastSlash = s.lastIndexOf('/');
     if (lastSlash >= 0) return s.substring(lastSlash + 1);
     return s;
+}
+
+static String getAppPackageName() {
+    return JSBindings::getAppPackageName();
 }
 
 static bool isStoragePermissionPersisted(const String& pkg) {
@@ -2470,16 +2746,31 @@ static bool promptStoragePermission(const String& pkg, const String& targetPath)
     TFT_eSPI* tft = JSBindings::getTFT();
     if (!tft) return false;
 
-    // Draw native modal dialog (centered 220x210 box)
-    tft->fillRoundRect(10, 35, 220, 220, 8, TFT_DARKGREY);
-    tft->drawRoundRect(10, 35, 220, 220, 8, TFT_WHITE);
+    int sw = tft->width();
+    int sh = tft->height();
+    int boxW = 220;
+    int boxH = (sh < 260) ? 200 : 220;
+    int boxX = (sw - boxW) / 2;
+    int boxY = (sh - boxH) / 2;
+    int cx = sw / 2;
+    int btnX = boxX + 10;
+    int btnW = boxW - 20;
+    int btnH = (sh < 260) ? 28 : 32;
+    int btnStep = (sh < 260) ? 35 : 40;
+    int btn1Y = boxY + ((sh < 260) ? 82 : 90);
+    int btn2Y = btn1Y + btnStep;
+    int btn3Y = btn2Y + btnStep;
+
+    // Draw native modal dialog (centered)
+    tft->fillRoundRect(boxX, boxY, boxW, boxH, 8, TFT_DARKGREY);
+    tft->drawRoundRect(boxX, boxY, boxW, boxH, 8, TFT_WHITE);
 
     tft->setTextDatum(MC_DATUM);
     tft->setTextColor(TFT_GOLD, TFT_DARKGREY);
-    tft->drawString("Storage Permission", 120, 55, 2);
+    tft->drawString("Storage Permission", cx, boxY + 18, 2);
 
     tft->setTextColor(TFT_WHITE, TFT_DARKGREY);
-    tft->drawString("App requests external access:", 120, 80, 2);
+    tft->drawString("App requests external access:", cx, boxY + 42, 2);
 
     // Target path snippet
     String displayPath = targetPath;
@@ -2487,43 +2778,227 @@ static bool promptStoragePermission(const String& pkg, const String& targetPath)
         displayPath = displayPath.substring(0, 19) + "...";
     }
     tft->setTextColor(TFT_CYAN, TFT_DARKGREY);
-    tft->drawString(displayPath, 120, 102, 2);
+    tft->drawString(displayPath, cx, boxY + 62, 2);
 
     // Buttons
     // 1. Allow Once (Session)
-    tft->fillRoundRect(20, 125, 200, 32, 4, TFT_BLUE);
+    tft->fillRoundRect(btnX, btn1Y, btnW, btnH, 4, TFT_BLUE);
     tft->setTextColor(TFT_WHITE, TFT_BLUE);
-    tft->drawString("Allow Once", 120, 141, 2);
+    tft->drawString("Allow Once", cx, btn1Y + btnH / 2, 2);
 
     // 2. Always Allow (Persisted)
-    tft->fillRoundRect(20, 165, 200, 32, 4, TFT_GREEN);
+    tft->fillRoundRect(btnX, btn2Y, btnW, btnH, 4, TFT_GREEN);
     tft->setTextColor(TFT_BLACK, TFT_GREEN);
-    tft->drawString("Always Allow", 120, 181, 2);
+    tft->drawString("Always Allow", cx, btn2Y + btnH / 2, 2);
 
     // 3. Deny
-    tft->fillRoundRect(20, 205, 200, 32, 4, TFT_RED);
+    tft->fillRoundRect(btnX, btn3Y, btnW, btnH, 4, TFT_RED);
     tft->setTextColor(TFT_WHITE, TFT_RED);
-    tft->drawString("Deny", 120, 221, 2);
+    tft->drawString("Deny", cx, btn3Y + btnH / 2, 2);
 
     // Wait for touch with watchdog reset
     uint16_t tx = 0, ty = 0;
     while (true) {
         if (TouchDriver::getTouch(&tx, &ty)) {
-            // Button 1: Allow Once (y: 125-157)
-            if (tx >= 20 && tx <= 220 && ty >= 125 && ty <= 157) {
+            // Button 1: Allow Once
+            if (tx >= btnX && tx <= (btnX + btnW) && ty >= btn1Y && ty <= (btn1Y + btnH)) {
                 while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
                 grantSessionStorage(pkg);
                 return true;
             }
-            // Button 2: Always Allow (y: 165-197)
-            else if (tx >= 20 && tx <= 220 && ty >= 165 && ty <= 197) {
+            // Button 2: Always Allow
+            else if (tx >= btnX && tx <= (btnX + btnW) && ty >= btn2Y && ty <= (btn2Y + btnH)) {
                 while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
                 grantSessionStorage(pkg);
                 persistStoragePermission(pkg);
                 return true;
             }
-            // Button 3: Deny (y: 205-237)
-            else if (tx >= 20 && tx <= 220 && ty >= 205 && ty <= 237) {
+            // Button 3: Deny
+            else if (tx >= btnX && tx <= (btnX + btnW) && ty >= btn3Y && ty <= (btn3Y + btnH)) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                return false;
+            }
+        }
+        delay(20);
+        esp_task_wdt_reset();
+    }
+}
+
+static bool isLocationPermissionPersisted(const String& pkg) {
+    if (pkg.length() == 0) return true;
+    String path = "/local/system/app_permissions.json";
+    if (!FileSystem::exists(path.c_str())) return false;
+    String content = FileSystem::readTextFile(path.c_str());
+    if (content.length() == 0) return false;
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, content);
+    if (err) return false;
+    JsonArray arr = doc[pkg].as<JsonArray>();
+    if (arr.isNull()) return false;
+    for (JsonVariant v : arr) {
+        if (v.as<String>() == "location") return true;
+    }
+    return false;
+}
+
+static void persistLocationPermission(const String& pkg) {
+    if (pkg.length() == 0) return;
+    String path = "/local/system/app_permissions.json";
+    JsonDocument doc;
+    if (FileSystem::exists(path.c_str())) {
+        String existing = FileSystem::readTextFile(path.c_str());
+        deserializeJson(doc, existing);
+    }
+    JsonArray arr = doc[pkg].to<JsonArray>();
+    bool found = false;
+    for (JsonVariant v : arr) {
+        if (v.as<String>() == "location") { found = true; break; }
+    }
+    if (!found) {
+        arr.add("location");
+    }
+    String out;
+    serializeJson(doc, out);
+    FileSystem::writeTextFile(path.c_str(), out.c_str());
+}
+
+static bool isSessionLocationGranted(const String& pkg) {
+    for (const auto& p : s_sessionLocationPackages) {
+        if (p == pkg) return true;
+    }
+    return false;
+}
+
+static void grantSessionLocation(const String& pkg) {
+    if (!isSessionLocationGranted(pkg)) {
+        s_sessionLocationPackages.push_back(pkg);
+    }
+}
+
+static bool promptLocationPermission(const String& pkg) {
+    TFT_eSPI* tft = JSBindings::getTFT();
+    if (!tft) return false;
+
+    int sw = tft->width();
+    int sh = tft->height();
+    int boxW = 220;
+    int boxH = (sh < 260) ? 200 : 220;
+    int boxX = (sw - boxW) / 2;
+    int boxY = (sh - boxH) / 2;
+    int cx = sw / 2;
+    int btnX = boxX + 10;
+    int btnW = boxW - 20;
+    int btnH = (sh < 260) ? 28 : 32;
+    int btnStep = (sh < 260) ? 35 : 40;
+    int btn1Y = boxY + ((sh < 260) ? 82 : 90);
+    int btn2Y = btn1Y + btnStep;
+    int btn3Y = btn2Y + btnStep;
+
+    tft->fillRoundRect(boxX, boxY, boxW, boxH, 8, TFT_DARKGREY);
+    tft->drawRoundRect(boxX, boxY, boxW, boxH, 8, TFT_GOLD);
+
+    tft->setTextDatum(MC_DATUM);
+    tft->setTextColor(TFT_GOLD, TFT_DARKGREY);
+    tft->drawString("Location Permission", cx, boxY + 18, 2);
+
+    tft->setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft->drawString("App requests GPS location:", cx, boxY + 42, 2);
+
+    String displayPkg = pkg.length() > 0 ? pkg : "Application";
+    if (displayPkg.length() > 22) displayPkg = displayPkg.substring(0, 19) + "...";
+    tft->setTextColor(TFT_CYAN, TFT_DARKGREY);
+    tft->drawString(displayPkg, cx, boxY + 62, 2);
+
+    // 1. Allow Once
+    tft->fillRoundRect(btnX, btn1Y, btnW, btnH, 4, TFT_BLUE);
+    tft->setTextColor(TFT_WHITE, TFT_BLUE);
+    tft->drawString("Allow Once", cx, btn1Y + btnH / 2, 2);
+
+    // 2. Always Allow
+    tft->fillRoundRect(btnX, btn2Y, btnW, btnH, 4, TFT_GREEN);
+    tft->setTextColor(TFT_BLACK, TFT_GREEN);
+    tft->drawString("Always Allow", cx, btn2Y + btnH / 2, 2);
+
+    // 3. Deny
+    tft->fillRoundRect(btnX, btn3Y, btnW, btnH, 4, TFT_RED);
+    tft->setTextColor(TFT_WHITE, TFT_RED);
+    tft->drawString("Deny", cx, btn3Y + btnH / 2, 2);
+
+    uint16_t tx = 0, ty = 0;
+    while (true) {
+        if (TouchDriver::getTouch(&tx, &ty)) {
+            if (tx >= btnX && tx <= (btnX + btnW) && ty >= btn1Y && ty <= (btn1Y + btnH)) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                grantSessionLocation(pkg);
+                return true;
+            } else if (tx >= btnX && tx <= (btnX + btnW) && ty >= btn2Y && ty <= (btn2Y + btnH)) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                grantSessionLocation(pkg);
+                persistLocationPermission(pkg);
+                return true;
+            } else if (tx >= btnX && tx <= (btnX + btnW) && ty >= btn3Y && ty <= (btn3Y + btnH)) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                return false;
+            }
+        }
+        delay(20);
+        esp_task_wdt_reset();
+    }
+}
+
+bool JSBindings::checkLocationPermission() {
+    String pkg = getAppPackageName();
+    if (isSessionLocationGranted(pkg) || isLocationPermissionPersisted(pkg)) {
+        return true;
+    }
+    return promptLocationPermission(pkg);
+}
+
+bool JSBindings::promptEnableGPSMasterSwitch() {
+    TFT_eSPI* tft = JSBindings::getTFT();
+    if (!tft) return false;
+
+    int sw = tft->width();
+    int sh = tft->height();
+    int boxW = 220;
+    int boxH = 145;
+    int boxX = (sw - boxW) / 2;
+    int boxY = (sh - boxH) / 2;
+    int cx = sw / 2;
+
+    tft->fillRoundRect(boxX, boxY, boxW, boxH, 8, TFT_DARKGREY);
+    tft->drawRoundRect(boxX, boxY, boxW, boxH, 8, TFT_CYAN);
+
+    tft->setTextDatum(MC_DATUM);
+    tft->setTextColor(TFT_WHITE, TFT_DARKGREY);
+    tft->drawString("GPS is Turned OFF", cx, boxY + 22, 2);
+    tft->setTextColor(TFT_LIGHTGREY, TFT_DARKGREY);
+    tft->drawString("Turn ON in Settings?", cx, boxY + 48, 2);
+
+    int btnW = 90;
+    int btnH = 30;
+    int btnY = boxY + 92;
+    int btn1X = boxX + 15;
+    int btn2X = boxX + boxW - btnW - 15;
+
+    // [ TURN ON ]
+    tft->fillRoundRect(btn1X, btnY, btnW, btnH, 4, TFT_GREEN);
+    tft->setTextColor(TFT_BLACK, TFT_GREEN);
+    tft->drawString("Turn ON", btn1X + btnW / 2, btnY + btnH / 2, 2);
+
+    // [ CANCEL ]
+    tft->fillRoundRect(btn2X, btnY, btnW, btnH, 4, TFT_RED);
+    tft->setTextColor(TFT_WHITE, TFT_RED);
+    tft->drawString("Cancel", btn2X + btnW / 2, btnY + btnH / 2, 2);
+
+    uint16_t tx = 0, ty = 0;
+    while (true) {
+        if (TouchDriver::getTouch(&tx, &ty)) {
+            if (tx >= btn1X && tx <= (btn1X + btnW) && ty >= btnY && ty <= (btnY + btnH)) {
+                while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
+                GPSEngine::setMasterEnabled(true);
+                return true;
+            } else if (tx >= btn2X && tx <= (btn2X + btnW) && ty >= btnY && ty <= (btnY + btnH)) {
                 while (TouchDriver::getTouch(&tx, &ty)) { delay(10); esp_task_wdt_reset(); }
                 return false;
             }
@@ -2694,13 +3169,246 @@ duk_ret_t JSBindings::js_mkdir(duk_context *ctx) {
 }
 
 duk_ret_t JSBindings::js_rmdir(duk_context *ctx) {
-    const char *path = duk_require_string(ctx, 0);
-    if (!isPathAllowed(path)) {
+    if (!duk_is_string(ctx, 0)) {
         duk_push_boolean(ctx, false);
         return 1;
     }
+    const char *path = duk_get_string(ctx, 0);
     String fullPath = resolveAppPath(path);
-    duk_push_boolean(ctx, FileSystem::rmdir(fullPath.c_str()));
+    if (!isPathAllowed(fullPath.c_str())) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    bool recursive = duk_is_boolean(ctx, 1) ? duk_get_boolean(ctx, 1) : false;
+    duk_push_boolean(ctx, FileSystem::rmdir(fullPath.c_str(), recursive));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_isSDMounted(duk_context *ctx) {
+    duk_push_boolean(ctx, FileSystem::isSDMounted());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_copyFile(duk_context *ctx) {
+    if (!duk_is_string(ctx, 0) || !duk_is_string(ctx, 1)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    const char *srcPath = duk_get_string(ctx, 0);
+    const char *dstPath = duk_get_string(ctx, 1);
+    String fullSrc = resolveAppPath(srcPath);
+    String fullDst = resolveAppPath(dstPath);
+    if (!isPathAllowed(fullSrc.c_str()) || !isPathAllowed(fullDst.c_str())) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    duk_push_boolean(ctx, FileSystem::copyFile(fullSrc.c_str(), fullDst.c_str()));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_stat(duk_context *ctx) {
+    if (!duk_is_string(ctx, 0)) {
+        duk_push_null(ctx);
+        return 1;
+    }
+    const char *rawPath = duk_get_string(ctx, 0);
+    String fullPath = resolveAppPath(rawPath);
+    if (!isPathAllowed(fullPath.c_str())) {
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    FSLockGuard lock;
+    File f = FileSystem::openFile(fullPath.c_str(), "r");
+    bool exists = (bool)f;
+    bool isDir = false;
+    size_t size = 0;
+    time_t mtime = 0;
+
+    if (f) {
+        isDir = f.isDirectory();
+        size = isDir ? 0 : f.size();
+        mtime = f.getLastWrite();
+        f.close();
+    } else {
+        // Fallback for LittleFS directory entries where open() fails
+        if (FileSystem::isDirectory(fullPath.c_str())) {
+            exists = true;
+            isDir = true;
+            size = 0;
+            mtime = 0;
+        } else {
+            duk_push_null(ctx);
+            return 1;
+        }
+    }
+
+    duk_push_object(ctx);
+    duk_push_boolean(ctx, exists); duk_put_prop_string(ctx, -2, "exists");
+    duk_push_boolean(ctx, isDir); duk_put_prop_string(ctx, -2, "isDirectory");
+    duk_push_boolean(ctx, !isDir); duk_put_prop_string(ctx, -2, "isFile");
+    duk_push_uint(ctx, (uint32_t)size); duk_put_prop_string(ctx, -2, "size");
+    duk_push_uint(ctx, (uint32_t)mtime); duk_put_prop_string(ctx, -2, "mtime");
+    bool isSD = fullPath.startsWith("/sd/") || fullPath == "/sd";
+    duk_push_string(ctx, isSD ? "sd" : "local"); duk_put_prop_string(ctx, -2, "drive");
+
+    return 1;
+}
+
+duk_ret_t JSBindings::js_readChunk(duk_context *ctx) {
+    if (!duk_is_string(ctx, 0) || !duk_is_number(ctx, 1) || !duk_is_number(ctx, 2)) {
+        duk_push_null(ctx);
+        return 1;
+    }
+    const char* rawPath = duk_get_string(ctx, 0);
+    double rawOffset = duk_get_number(ctx, 1);
+    double rawLen = duk_get_number(ctx, 2);
+    bool asBinary = duk_is_boolean(ctx, 3) ? duk_get_boolean(ctx, 3) : false;
+
+    if (isnan(rawOffset) || isinf(rawOffset) || rawOffset < 0.0 ||
+        isnan(rawLen) || isinf(rawLen) || rawLen <= 0.0) {
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    String fullPath = resolveAppPath(rawPath);
+    if (!isPathAllowed(fullPath.c_str())) {
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    FSLockGuard lock;
+    File file = FileSystem::openFile(fullPath.c_str(), "r");
+    if (!file || file.isDirectory()) {
+        if (file) file.close();
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    size_t fileSize = file.size();
+    size_t offset = (size_t)rawOffset;
+    if (offset >= fileSize || !file.seek(offset)) {
+        file.close();
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    const size_t MAX_CHUNK_SIZE = 16 * 1024; // 16 KB hard allocation ceiling
+    size_t remaining = fileSize - offset;
+    size_t bytesToRead = ((size_t)rawLen > MAX_CHUNK_SIZE) ? MAX_CHUNK_SIZE : (size_t)rawLen;
+    if (bytesToRead > remaining) bytesToRead = remaining;
+
+    if (asBinary) {
+        void* buf = duk_push_fixed_buffer(ctx, bytesToRead);
+        size_t actualRead = file.read((uint8_t*)buf, bytesToRead);
+        file.close();
+        duk_push_buffer_object(ctx, -1, 0, actualRead, DUK_BUFOBJ_UINT8ARRAY);
+        duk_remove(ctx, -2);
+    } else {
+        uint8_t* tempBuf = (uint8_t*)malloc(bytesToRead);
+        if (!tempBuf) {
+            file.close();
+            duk_push_null(ctx);
+            return 1;
+        }
+        size_t actualRead = file.read(tempBuf, bytesToRead);
+        file.close();
+        duk_push_lstring(ctx, (const char*)tempBuf, actualRead);
+        free(tempBuf);
+    }
+    return 1;
+}
+
+duk_ret_t JSBindings::js_readBinary(duk_context *ctx) {
+    if (!duk_is_string(ctx, 0)) {
+        duk_push_null(ctx);
+        return 1;
+    }
+    const char* rawPath = duk_get_string(ctx, 0);
+    String fullPath = resolveAppPath(rawPath);
+    if (!isPathAllowed(fullPath.c_str())) {
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    FSLockGuard lock;
+    File file = FileSystem::openFile(fullPath.c_str(), "r");
+    if (!file || file.isDirectory()) {
+        if (file) file.close();
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    size_t sz = file.size();
+    // 0-byte file safety: return empty Uint8Array([])
+    if (sz == 0) {
+        file.close();
+        void* buf = duk_push_fixed_buffer(ctx, 0);
+        duk_push_buffer_object(ctx, -1, 0, 0, DUK_BUFOBJ_UINT8ARRAY);
+        duk_remove(ctx, -2);
+        return 1;
+    }
+
+    // 32 KB ceiling and free heap check to prevent Duktape heap panic
+    const size_t MAX_BINARY_SIZE = 32 * 1024;
+    if (sz > MAX_BINARY_SIZE || sz > (ESP.getFreeHeap() / 2)) {
+        Serial.printf("[FS] readBinary: File too large (%u bytes). Use FS.readChunk instead.\n", (unsigned int)sz);
+        file.close();
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    void* buf = duk_push_fixed_buffer(ctx, sz);
+    size_t readBytes = file.read((uint8_t*)buf, sz);
+    file.close();
+    duk_push_buffer_object(ctx, -1, 0, readBytes, DUK_BUFOBJ_UINT8ARRAY);
+    duk_remove(ctx, -2);
+    return 1;
+}
+
+duk_ret_t JSBindings::js_writeBinary(duk_context *ctx) {
+    if (!duk_is_string(ctx, 0)) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+    const char* rawPath = duk_get_string(ctx, 0);
+    duk_size_t len = 0;
+    void* data = duk_get_buffer_data(ctx, 1, &len);
+    const uint8_t* bytePtr = (const uint8_t*)data;
+    if (!bytePtr && duk_is_string(ctx, 1)) {
+        bytePtr = (const uint8_t*)duk_get_lstring(ctx, 1, &len);
+    }
+    if (!bytePtr && len > 0) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+
+    String fullPath = resolveAppPath(rawPath);
+    if (!isPathAllowed(fullPath.c_str())) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+
+    FSLockGuard lock;
+    File file = FileSystem::openFile(fullPath.c_str(), "w");
+    if (!file) {
+        duk_push_boolean(ctx, false);
+        return 1;
+    }
+
+    if (len > 0) {
+        size_t written = file.write(bytePtr, len);
+        if (written != len) {
+            Serial.println("[FS] writeBinary: Disk full (ENOSPC)! Rolling back.");
+            file.close();
+            FileSystem::deleteFile(fullPath.c_str());
+            duk_push_boolean(ctx, false);
+            return 1;
+        }
+    }
+    file.flush();
+    file.close();
+    duk_push_boolean(ctx, true);
     return 1;
 }
 
@@ -2776,6 +3484,114 @@ duk_ret_t JSBindings::js_unmountSD(duk_context *ctx) {
     return 0;
 }
 
+duk_ret_t JSBindings::js_fs_pick(duk_context *ctx) {
+    FilePickerOptions opts;
+    opts.sandboxRoot = s_sandboxRoot;
+    opts.isDirectoryPicker = false;
+    opts.title = "Select File";
+
+    if (duk_is_object(ctx, 0) && !duk_is_array(ctx, 0)) {
+        duk_get_prop_string(ctx, 0, "title");
+        if (duk_is_string(ctx, -1)) opts.title = duk_get_string(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "startPath");
+        if (duk_is_string(ctx, -1)) opts.startPath = duk_get_string(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "allowDrives");
+        if (duk_is_boolean(ctx, -1)) opts.allowDrives = duk_get_boolean(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "showHidden");
+        if (duk_is_boolean(ctx, -1)) opts.showHidden = duk_get_boolean(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "extensions");
+        if (duk_is_array(ctx, -1)) {
+            duk_size_t len = duk_get_length(ctx, -1);
+            for (duk_size_t i = 0; i < len; i++) {
+                duk_get_prop_index(ctx, -1, (duk_uarridx_t)i);
+                if (duk_is_string(ctx, -1)) opts.extensions.push_back(duk_get_string(ctx, -1));
+                duk_pop(ctx);
+            }
+        }
+        duk_pop(ctx);
+    } else if (duk_is_array(ctx, 0)) {
+        duk_size_t len = duk_get_length(ctx, 0);
+        for (duk_size_t i = 0; i < len; i++) {
+            duk_get_prop_index(ctx, 0, (duk_uarridx_t)i);
+            if (duk_is_string(ctx, -1)) opts.extensions.push_back(duk_get_string(ctx, -1));
+            duk_pop(ctx);
+        }
+    } else if (duk_is_string(ctx, 0)) {
+        opts.startPath = duk_get_string(ctx, 0);
+    }
+
+    String result = FilePickerDialog::show(tftInstance, opts);
+    if (result.length() == 0) {
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    String pkg = getAppPackageName();
+    if (pkg.length() > 0) {
+        bool found = false;
+        for (const auto& p : s_sessionGrantedPackages) {
+            if (p == pkg) { found = true; break; }
+        }
+        if (!found) s_sessionGrantedPackages.push_back(pkg);
+    }
+
+    duk_push_string(ctx, result.c_str());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_fs_pickDir(duk_context *ctx) {
+    FilePickerOptions opts;
+    opts.sandboxRoot = s_sandboxRoot;
+    opts.isDirectoryPicker = true;
+    opts.title = "Select Folder";
+
+    if (duk_is_object(ctx, 0)) {
+        duk_get_prop_string(ctx, 0, "title");
+        if (duk_is_string(ctx, -1)) opts.title = duk_get_string(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "startPath");
+        if (duk_is_string(ctx, -1)) opts.startPath = duk_get_string(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "allowDrives");
+        if (duk_is_boolean(ctx, -1)) opts.allowDrives = duk_get_boolean(ctx, -1);
+        duk_pop(ctx);
+
+        duk_get_prop_string(ctx, 0, "showCreate");
+        if (duk_is_boolean(ctx, -1)) opts.showCreate = duk_get_boolean(ctx, -1);
+        duk_pop(ctx);
+    } else if (duk_is_string(ctx, 0)) {
+        opts.startPath = duk_get_string(ctx, 0);
+    }
+
+    String result = FilePickerDialog::show(tftInstance, opts);
+    if (result.length() == 0) {
+        duk_push_null(ctx);
+        return 1;
+    }
+
+    String pkg = getAppPackageName();
+    if (pkg.length() > 0) {
+        bool found = false;
+        for (const auto& p : s_sessionGrantedPackages) {
+            if (p == pkg) { found = true; break; }
+        }
+        if (!found) s_sessionGrantedPackages.push_back(pkg);
+    }
+
+    duk_push_string(ctx, result.c_str());
+    return 1;
+}
+
 // =====================================================
 // Keyboard Bindings
 // =====================================================
@@ -2791,6 +3607,341 @@ duk_ret_t JSBindings::js_prompt(duk_context *ctx) {
     
     duk_push_string(ctx, result.c_str());
     
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_isAvailable(duk_context *ctx) {
+    duk_push_boolean(ctx, hasKeyboard());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_getKey(duk_context *ctx) {
+    BoardKey k = getKeyInput();
+    if (k == BOARD_KEY_NONE) {
+        duk_push_null(ctx);
+    } else {
+        char c = keyToChar(k);
+        char str[2] = {c, '\0'};
+        duk_push_string(ctx, str);
+    }
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_getEvent(duk_context *ctx) {
+    BoardKey k = getKeyInput();
+    if (k == BOARD_KEY_NONE) {
+        duk_push_null(ctx);
+        return 1;
+    }
+    char c = keyToChar(k);
+    duk_push_object(ctx);
+    duk_push_int(ctx, (int)k); duk_put_prop_string(ctx, -2, "code");
+    char str[2] = {c, '\0'};
+    duk_push_string(ctx, str); duk_put_prop_string(ctx, -2, "char");
+    const char* name = "CHAR";
+    switch (k) {
+        case BOARD_KEY_UP: name = "UP"; break;
+        case BOARD_KEY_DOWN: name = "DOWN"; break;
+        case BOARD_KEY_LEFT: name = "LEFT"; break;
+        case BOARD_KEY_RIGHT: name = "RIGHT"; break;
+        case BOARD_KEY_ENTER: name = "ENTER"; break;
+        case BOARD_KEY_BACK: case BOARD_KEY_DEL: name = "BACKSPACE"; break;
+        case BOARD_KEY_ESC: name = "ESC"; break;
+        case BOARD_KEY_TAB: name = "TAB"; break;
+        case BOARD_KEY_SPACE: name = "SPACE"; break;
+        default: name = "CHAR"; break;
+    }
+    duk_push_string(ctx, name); duk_put_prop_string(ctx, -2, "name");
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_hasKey(duk_context *ctx) {
+    duk_push_boolean(ctx, hasKeyInput());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_clear(duk_context *ctx) {
+    clearKeyboardBuffer();
+    return 0;
+}
+
+duk_ret_t JSBindings::js_keyboard_getModifiers(duk_context *ctx) {
+    duk_push_object(ctx);
+    duk_push_boolean(ctx, isShiftActive());
+    duk_put_prop_string(ctx, -2, "shift");
+    duk_push_boolean(ctx, isFnActive());
+    duk_put_prop_string(ctx, -2, "fn");
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_setBacklight(duk_context *ctx) {
+    bool en = duk_require_boolean(ctx, 0);
+    setKeyboardBacklight(en);
+    return 0;
+}
+
+duk_ret_t JSBindings::js_keyboard_setBacklightLevel(duk_context *ctx) {
+    int lvl = duk_require_int(ctx, 0);
+    setKeyboardBacklightLevel((uint8_t)lvl);
+    return 0;
+}
+
+duk_ret_t JSBindings::js_keyboard_getBacklightLevel(duk_context *ctx) {
+    duk_push_int(ctx, getKeyboardBacklightLevel());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_keyboard_readString(duk_context *ctx) {
+    int timeoutMs = duk_is_number(ctx, 0) ? duk_get_int(ctx, 0) : 5000;
+    unsigned long start = millis();
+    String line = "";
+    while (millis() - start < (unsigned long)timeoutMs) {
+        BoardKey k = getKeyInput();
+        if (k == BOARD_KEY_ENTER) break;
+        char c = keyToChar(k);
+        if (c != '\0') line += c;
+        delay(5);
+    }
+    duk_push_string(ctx, line.c_str());
+    return 1;
+}
+
+// =====================================================
+// Trackball Bindings
+// =====================================================
+
+duk_ret_t JSBindings::js_trackball_getState(duk_context *ctx) {
+    TrackballState st = getTrackballState();
+    duk_push_object(ctx);
+    duk_push_int(ctx, st.x);       duk_put_prop_string(ctx, -2, "x");
+    duk_push_int(ctx, st.y);       duk_put_prop_string(ctx, -2, "y");
+    duk_push_int(ctx, st.dx);      duk_put_prop_string(ctx, -2, "dx");
+    duk_push_int(ctx, st.dy);      duk_put_prop_string(ctx, -2, "dy");
+    duk_push_int(ctx, st.up);      duk_put_prop_string(ctx, -2, "up");
+    duk_push_int(ctx, st.down);    duk_put_prop_string(ctx, -2, "down");
+    duk_push_int(ctx, st.left);    duk_put_prop_string(ctx, -2, "left");
+    duk_push_int(ctx, st.right);   duk_put_prop_string(ctx, -2, "right");
+    duk_push_boolean(ctx, st.pressed); duk_put_prop_string(ctx, -2, "pressed");
+    duk_push_boolean(ctx, st.clicked); duk_put_prop_string(ctx, -2, "clicked");
+    return 1;
+}
+
+duk_ret_t JSBindings::js_trackball_getDelta(duk_context *ctx) {
+    int16_t dx = 0, dy = 0;
+    getTrackballDelta(&dx, &dy);
+    duk_push_object(ctx);
+    duk_push_int(ctx, dx); duk_put_prop_string(ctx, -2, "dx");
+    duk_push_int(ctx, dy); duk_put_prop_string(ctx, -2, "dy");
+    return 1;
+}
+
+duk_ret_t JSBindings::js_trackball_isPressed(duk_context *ctx) {
+    duk_push_boolean(ctx, isTrackballPressed());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_trackball_isClicked(duk_context *ctx) {
+    duk_push_boolean(ctx, isTrackballClicked());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_trackball_getRawCounts(duk_context *ctx) {
+    uint8_t u = 0, d = 0, l = 0, r = 0;
+    getTrackballRawCounts(&u, &d, &l, &r);
+    duk_push_object(ctx);
+    duk_push_int(ctx, u); duk_put_prop_string(ctx, -2, "up");
+    duk_push_int(ctx, d); duk_put_prop_string(ctx, -2, "down");
+    duk_push_int(ctx, l); duk_put_prop_string(ctx, -2, "left");
+    duk_push_int(ctx, r); duk_put_prop_string(ctx, -2, "right");
+    return 1;
+}
+
+duk_ret_t JSBindings::js_trackball_reset(duk_context *ctx) {
+    resetTrackball();
+    return 0;
+}
+
+// =====================================================
+// Speaker & Audio Bindings
+// =====================================================
+
+duk_ret_t JSBindings::js_speaker_playWav(duk_context *ctx) {
+    const char *path = duk_require_string(ctx, 0);
+    duk_push_boolean(ctx, AudioEngine::playWav(path));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_playMp3(duk_context *ctx) {
+    const char *path = duk_require_string(ctx, 0);
+    duk_push_boolean(ctx, AudioEngine::playMp3(path));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_play(duk_context *ctx) {
+    const char *path = duk_require_string(ctx, 0);
+    duk_push_boolean(ctx, AudioEngine::play(path));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_seek(duk_context *ctx) {
+    int posMs = duk_require_int(ctx, 0);
+    duk_push_boolean(ctx, AudioEngine::seek((uint32_t)posMs));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_playTone(duk_context *ctx) {
+    int freq = duk_require_int(ctx, 0);
+    int dur = duk_require_int(ctx, 1);
+    int vol = duk_is_number(ctx, 2) ? duk_get_int(ctx, 2) : 100;
+    duk_push_boolean(ctx, AudioEngine::playTone((uint32_t)freq, (uint32_t)dur, (uint8_t)vol));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_playMelody(duk_context *ctx) {
+    if (!duk_is_array(ctx, 0)) return 0;
+    duk_size_t len = duk_get_length(ctx, 0);
+    for (duk_size_t i = 0; i < len; i++) {
+        duk_get_prop_index(ctx, 0, (duk_uarridx_t)i);
+        if (duk_is_object(ctx, -1)) {
+            duk_get_prop_string(ctx, -1, "f");
+            int f = duk_get_int_default(ctx, -1, 440);
+            duk_pop(ctx);
+            duk_get_prop_string(ctx, -1, "d");
+            int d = duk_get_int_default(ctx, -1, 100);
+            duk_pop(ctx);
+            AudioEngine::playTone((uint32_t)f, (uint32_t)d);
+            delay(d + 10);
+        }
+        duk_pop(ctx);
+    }
+    return 0;
+}
+
+duk_ret_t JSBindings::js_speaker_playBeep(duk_context *ctx) {
+    const char *preset = duk_require_string(ctx, 0);
+    duk_push_boolean(ctx, AudioEngine::playBeep(preset));
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_stop(duk_context *ctx) {
+    AudioEngine::stop();
+    return 0;
+}
+
+duk_ret_t JSBindings::js_speaker_pause(duk_context *ctx) {
+    AudioEngine::pause();
+    return 0;
+}
+
+duk_ret_t JSBindings::js_speaker_resume(duk_context *ctx) {
+    AudioEngine::resume();
+    return 0;
+}
+
+duk_ret_t JSBindings::js_speaker_isPlaying(duk_context *ctx) {
+    duk_push_boolean(ctx, AudioEngine::isPlaying());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_getDuration(duk_context *ctx) {
+    duk_push_uint(ctx, AudioEngine::getDuration());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_getPosition(duk_context *ctx) {
+    duk_push_uint(ctx, AudioEngine::getPosition());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_setVolume(duk_context *ctx) {
+    int vol = duk_require_int(ctx, 0);
+    AudioEngine::setVolume((uint8_t)vol);
+    return 0;
+}
+
+duk_ret_t JSBindings::js_speaker_getVolume(duk_context *ctx) {
+    duk_push_int(ctx, AudioEngine::getVolume());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_speaker_mute(duk_context *ctx) {
+    bool m = duk_require_boolean(ctx, 0);
+    AudioEngine::mute(m);
+    return 0;
+}
+
+duk_ret_t JSBindings::js_speaker_isMuted(duk_context *ctx) {
+    duk_push_boolean(ctx, AudioEngine::isMuted());
+    return 1;
+}
+
+// =====================================================
+// Device Information Bindings
+// =====================================================
+
+duk_ret_t JSBindings::js_device_getName(duk_context *ctx) {
+    duk_push_string(ctx, getBoardModelName());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_hasTrackball(duk_context *ctx) {
+    duk_push_boolean(ctx, hasTrackball());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_hasKeyboard(duk_context *ctx) {
+    duk_push_boolean(ctx, hasKeyboard());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_hasSpeaker(duk_context *ctx) {
+    duk_push_boolean(ctx, hasSpeaker());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_hasTouch(duk_context *ctx) {
+    duk_push_boolean(ctx, hasTouch());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_hasBattery(duk_context *ctx) {
+    duk_push_boolean(ctx, hasBattery());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_getBatteryPercent(duk_context *ctx) {
+    duk_push_int(ctx, getBatteryPercent());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_getBatteryVoltage(duk_context *ctx) {
+    duk_push_number(ctx, (double)getBatteryVoltage());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_isCharging(duk_context *ctx) {
+    duk_push_boolean(ctx, isChargerConnected());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_getChargeTimeRemaining(duk_context *ctx) {
+    duk_push_int(ctx, getEstimatedChargeTimeMins());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_getDischargeTimeRemaining(duk_context *ctx) {
+    duk_push_int(ctx, getEstimatedDischargeTimeMins());
+    return 1;
+}
+
+duk_ret_t JSBindings::js_device_setBrightness(duk_context *ctx) {
+    int b = duk_require_int(ctx, 0);
+    setBacklightLevel((uint8_t)b);
+    return 0;
+}
+
+duk_ret_t JSBindings::js_device_getBrightness(duk_context *ctx) {
+    duk_push_int(ctx, getBacklightLevel());
     return 1;
 }
 
@@ -3134,8 +4285,10 @@ duk_ret_t JSBindings::js_math_transformVertices(duk_context *ctx) {
         duk_pop(ctx);
     }
     
-    float screenW = (duk_get_top(ctx) >= 3 && !duk_is_undefined(ctx, 2)) ? (float)duk_get_number(ctx, 2) : 240.0f;
-    float screenH = (duk_get_top(ctx) >= 4 && !duk_is_undefined(ctx, 3)) ? (float)duk_get_number(ctx, 3) : 320.0f;
+    float defaultW = (float)(s_jsNativeRes ? jsPhysW() : JS_LOGICAL_W);
+    float defaultH = (float)(s_jsNativeRes ? jsPhysH() : JS_LOGICAL_H);
+    float screenW = (duk_get_top(ctx) >= 3 && !duk_is_undefined(ctx, 2)) ? (float)duk_get_number(ctx, 2) : defaultW;
+    float screenH = (duk_get_top(ctx) >= 4 && !duk_is_undefined(ctx, 3)) ? (float)duk_get_number(ctx, 3) : defaultH;
     float scale   = (duk_get_top(ctx) >= 5 && !duk_is_undefined(ctx, 4)) ? (float)duk_get_number(ctx, 4) : 200.0f;
     float distZ   = (duk_get_top(ctx) >= 6 && !duk_is_undefined(ctx, 5)) ? (float)duk_get_number(ctx, 5) : 3.0f;
     
@@ -3379,8 +4532,10 @@ duk_ret_t JSBindings::js_3d_begin(duk_context *ctx) {
         duk_push_boolean(ctx, false);
         return 1;
     }
-    int w = duk_require_int(ctx, 0);
-    int h = duk_require_int(ctx, 1);
+    int reqW = duk_require_int(ctx, 0);
+    int reqH = duk_require_int(ctx, 1);
+    int w = scaleW(0, reqW);
+    int h = scaleH(0, reqH);
     int depth = (duk_get_top(ctx) >= 3 && !duk_is_undefined(ctx, 2)) ? duk_require_int(ctx, 2) : 16;
     
     if (sprite3D) {
@@ -3408,13 +4563,14 @@ duk_ret_t JSBindings::js_3d_begin(duk_context *ctx) {
         return 1;
     }
     
-    buffer3DWidth = w;
-    buffer3DHeight = h;
+    buffer3DWidth = reqW;
+    buffer3DHeight = reqH;
     directDrawMode = false;
     vpX = 0;
     vpY = 0;
     vpW = w;
     vpH = h;
+    sprite3D->fillSprite(0);
     duk_push_boolean(ctx, true);
     return 1;
 }
@@ -3428,8 +4584,8 @@ duk_ret_t JSBindings::js_3d_clear(duk_context *ctx) {
 
 duk_ret_t JSBindings::js_3d_render(duk_context *ctx) {
     if (!tftInstance || !sprite3D) return 0;
-    int dx = (duk_get_top(ctx) >= 1) ? duk_require_int(ctx, 0) : 0;
-    int dy = (duk_get_top(ctx) >= 2) ? duk_require_int(ctx, 1) : 0;
+    int dx = (duk_get_top(ctx) >= 1) ? scaleX(duk_require_int(ctx, 0)) : 0;
+    int dy = (duk_get_top(ctx) >= 2) ? scaleY(duk_require_int(ctx, 1)) : 0;
     
     tftInstance->startWrite();
     sprite3D->pushSprite(dx, dy);
@@ -3451,10 +4607,14 @@ duk_ret_t JSBindings::js_3d_end(duk_context *ctx) {
 }
 
 duk_ret_t JSBindings::js_3d_setViewport(duk_context *ctx) {
-    vpX = duk_require_int(ctx, 0);
-    vpY = duk_require_int(ctx, 1);
-    vpW = duk_require_int(ctx, 2);
-    vpH = duk_require_int(ctx, 3);
+    int lx = duk_require_int(ctx, 0);
+    int ly = duk_require_int(ctx, 1);
+    int lw = duk_require_int(ctx, 2);
+    int lh = duk_require_int(ctx, 3);
+    vpX = scaleX(lx);
+    vpY = scaleY(ly);
+    vpW = scaleW(lx, lw);
+    vpH = scaleH(ly, lh);
     return 0;
 }
 
@@ -3815,6 +4975,7 @@ duk_ret_t JSBindings::js_3d_directDraw(duk_context *ctx) {
 
 void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     tftInstance = tft;
+    s_jsNativeRes = true;
 
     // --- System Object ---
     duk_push_global_object(ctx);
@@ -3925,6 +5086,16 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     
     duk_push_c_function(ctx, js_drawBMP, 3);
     duk_put_prop_string(ctx, -2, "drawBMP");
+    duk_push_c_function(ctx, js_drawImage, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "drawImage");
+    duk_push_c_function(ctx, js_drawPNG, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "drawPNG");
+    duk_push_c_function(ctx, js_drawJPG, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "drawJPG");
+    duk_push_c_function(ctx, js_drawJPG, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "drawJPEG");
+    duk_push_c_function(ctx, js_getImageInfo, 1);
+    duk_put_prop_string(ctx, -2, "getImageInfo");
 
     // --- Text ---
     duk_push_c_function(ctx, js_drawString, 4);
@@ -3939,8 +5110,12 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     duk_put_prop_string(ctx, -2, "color");
     duk_push_c_function(ctx, js_screenWidth, 0);
     duk_put_prop_string(ctx, -2, "screenWidth");
+    duk_push_c_function(ctx, js_screenWidth, 0);
+    duk_put_prop_string(ctx, -2, "width");
     duk_push_c_function(ctx, js_screenHeight, 0);
     duk_put_prop_string(ctx, -2, "screenHeight");
+    duk_push_c_function(ctx, js_screenHeight, 0);
+    duk_put_prop_string(ctx, -2, "height");
 
     // --- Touch Input ---
     duk_push_c_function(ctx, js_getTouch, 0);
@@ -4002,6 +5177,12 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
 
     duk_push_c_function(ctx, js_isWiFiActive, 0);
     duk_put_prop_string(ctx, -2, "isWiFiActive");
+
+    duk_push_c_function(ctx, js_fs_pick, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "pickFile");
+
+    duk_push_c_function(ctx, js_fs_pickDir, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "pickDir");
 
     // --- Keyboard ---
     duk_push_c_function(ctx, js_prompt, 2);
@@ -4106,6 +5287,68 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     duk_push_c_function(ctx, js_ai_status, 0); duk_put_prop_string(ctx, -2, "status");
     duk_put_prop_string(ctx, -2, "ai");
 
+    // System.keyboard sub-object
+    duk_push_object(ctx);
+    duk_push_c_function(ctx, js_keyboard_isAvailable, 0); duk_put_prop_string(ctx, -2, "isAvailable");
+    duk_push_c_function(ctx, js_keyboard_getKey, 0); duk_put_prop_string(ctx, -2, "getKey");
+    duk_push_c_function(ctx, js_keyboard_getEvent, 0); duk_put_prop_string(ctx, -2, "getEvent");
+    duk_push_c_function(ctx, js_keyboard_hasKey, 0); duk_put_prop_string(ctx, -2, "hasKey");
+    duk_push_c_function(ctx, js_keyboard_clear, 0); duk_put_prop_string(ctx, -2, "clear");
+    duk_push_c_function(ctx, js_keyboard_getModifiers, 0); duk_put_prop_string(ctx, -2, "getModifiers");
+    duk_push_c_function(ctx, js_keyboard_setBacklight, 1); duk_put_prop_string(ctx, -2, "setBacklight");
+    duk_push_c_function(ctx, js_keyboard_setBacklightLevel, 1); duk_put_prop_string(ctx, -2, "setBacklightLevel");
+    duk_push_c_function(ctx, js_keyboard_getBacklightLevel, 0); duk_put_prop_string(ctx, -2, "getBacklightLevel");
+    duk_push_c_function(ctx, js_keyboard_readString, 1); duk_put_prop_string(ctx, -2, "readString");
+    duk_put_prop_string(ctx, -2, "keyboard");
+
+    // System.trackball sub-object
+    duk_push_object(ctx);
+    duk_push_c_function(ctx, js_trackball_getState, 0); duk_put_prop_string(ctx, -2, "getState");
+    duk_push_c_function(ctx, js_trackball_getDelta, 0); duk_put_prop_string(ctx, -2, "getDelta");
+    duk_push_c_function(ctx, js_trackball_isPressed, 0); duk_put_prop_string(ctx, -2, "isPressed");
+    duk_push_c_function(ctx, js_trackball_isClicked, 0); duk_put_prop_string(ctx, -2, "isClicked");
+    duk_push_c_function(ctx, js_trackball_getRawCounts, 0); duk_put_prop_string(ctx, -2, "getRawCounts");
+    duk_push_c_function(ctx, js_trackball_reset, 0); duk_put_prop_string(ctx, -2, "reset");
+    duk_put_prop_string(ctx, -2, "trackball");
+
+    // System.speaker sub-object
+    duk_push_object(ctx);
+    duk_push_c_function(ctx, js_speaker_playWav, 1); duk_put_prop_string(ctx, -2, "playWav");
+    duk_push_c_function(ctx, js_speaker_playMp3, 1); duk_put_prop_string(ctx, -2, "playMp3");
+    duk_push_c_function(ctx, js_speaker_play, 1); duk_put_prop_string(ctx, -2, "play");
+    duk_push_c_function(ctx, js_speaker_seek, 1); duk_put_prop_string(ctx, -2, "seek");
+    duk_push_c_function(ctx, js_speaker_playTone, 3); duk_put_prop_string(ctx, -2, "playTone");
+    duk_push_c_function(ctx, js_speaker_playMelody, 1); duk_put_prop_string(ctx, -2, "playMelody");
+    duk_push_c_function(ctx, js_speaker_playBeep, 1); duk_put_prop_string(ctx, -2, "playBeep");
+    duk_push_c_function(ctx, js_speaker_stop, 0); duk_put_prop_string(ctx, -2, "stop");
+    duk_push_c_function(ctx, js_speaker_pause, 0); duk_put_prop_string(ctx, -2, "pause");
+    duk_push_c_function(ctx, js_speaker_resume, 0); duk_put_prop_string(ctx, -2, "resume");
+    duk_push_c_function(ctx, js_speaker_isPlaying, 0); duk_put_prop_string(ctx, -2, "isPlaying");
+    duk_push_c_function(ctx, js_speaker_getDuration, 0); duk_put_prop_string(ctx, -2, "getDuration");
+    duk_push_c_function(ctx, js_speaker_getPosition, 0); duk_put_prop_string(ctx, -2, "getPosition");
+    duk_push_c_function(ctx, js_speaker_setVolume, 1); duk_put_prop_string(ctx, -2, "setVolume");
+    duk_push_c_function(ctx, js_speaker_getVolume, 0); duk_put_prop_string(ctx, -2, "getVolume");
+    duk_push_c_function(ctx, js_speaker_mute, 1); duk_put_prop_string(ctx, -2, "mute");
+    duk_push_c_function(ctx, js_speaker_isMuted, 0); duk_put_prop_string(ctx, -2, "isMuted");
+    duk_put_prop_string(ctx, -2, "speaker");
+
+    // System.device sub-object
+    duk_push_object(ctx);
+    duk_push_c_function(ctx, js_device_getName, 0); duk_put_prop_string(ctx, -2, "getName");
+    duk_push_c_function(ctx, js_device_hasTrackball, 0); duk_put_prop_string(ctx, -2, "hasTrackball");
+    duk_push_c_function(ctx, js_device_hasKeyboard, 0); duk_put_prop_string(ctx, -2, "hasKeyboard");
+    duk_push_c_function(ctx, js_device_hasSpeaker, 0); duk_put_prop_string(ctx, -2, "hasSpeaker");
+    duk_push_c_function(ctx, js_device_hasTouch, 0); duk_put_prop_string(ctx, -2, "hasTouch");
+    duk_push_c_function(ctx, js_device_hasBattery, 0); duk_put_prop_string(ctx, -2, "hasBattery");
+    duk_push_c_function(ctx, js_device_getBatteryPercent, 0); duk_put_prop_string(ctx, -2, "getBatteryPercent");
+    duk_push_c_function(ctx, js_device_getBatteryVoltage, 0); duk_put_prop_string(ctx, -2, "getBatteryVoltage");
+    duk_push_c_function(ctx, js_device_isCharging, 0); duk_put_prop_string(ctx, -2, "isCharging");
+    duk_push_c_function(ctx, js_device_getChargeTimeRemaining, 0); duk_put_prop_string(ctx, -2, "getChargeTimeRemaining");
+    duk_push_c_function(ctx, js_device_getDischargeTimeRemaining, 0); duk_put_prop_string(ctx, -2, "getDischargeTimeRemaining");
+    duk_push_c_function(ctx, js_device_setBrightness, 1); duk_put_prop_string(ctx, -2, "setBrightness");
+    duk_push_c_function(ctx, js_device_getBrightness, 0); duk_put_prop_string(ctx, -2, "getBrightness");
+    duk_put_prop_string(ctx, -2, "device");
+
     // Assign to global variable 'System'
     duk_put_prop_string(ctx, -2, "System");
 
@@ -4190,7 +5433,7 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     duk_put_prop_string(ctx, -2, "listDir");
     duk_push_c_function(ctx, js_mkdir, 1);
     duk_put_prop_string(ctx, -2, "mkdir");
-    duk_push_c_function(ctx, js_rmdir, 1);
+    duk_push_c_function(ctx, js_rmdir, DUK_VARARGS);
     duk_put_prop_string(ctx, -2, "rmdir");
     duk_push_c_function(ctx, js_isDirectory, 1);
     duk_put_prop_string(ctx, -2, "isDirectory");
@@ -4210,6 +5453,26 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     duk_put_prop_string(ctx, -2, "mountSD");
     duk_push_c_function(ctx, js_unmountSD, 0);
     duk_put_prop_string(ctx, -2, "unmountSD");
+    duk_push_c_function(ctx, js_isSDMounted, 0);
+    duk_put_prop_string(ctx, -2, "isSDMounted");
+    duk_push_c_function(ctx, js_copyFile, 2);
+    duk_put_prop_string(ctx, -2, "copyFile");
+    duk_push_c_function(ctx, js_stat, 1);
+    duk_put_prop_string(ctx, -2, "stat");
+    duk_push_c_function(ctx, js_readChunk, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "readChunk");
+    duk_push_c_function(ctx, js_readBinary, 1);
+    duk_put_prop_string(ctx, -2, "readBinary");
+    duk_push_c_function(ctx, js_writeBinary, 2);
+    duk_put_prop_string(ctx, -2, "writeBinary");
+    duk_push_c_function(ctx, js_fs_pick, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "pick");
+    duk_push_c_function(ctx, js_fs_pick, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "pickFile");
+    duk_push_c_function(ctx, js_fs_pickDir, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "pickDir");
+    duk_push_c_function(ctx, js_fs_pickDir, DUK_VARARGS);
+    duk_put_prop_string(ctx, -2, "pickFolder");
     
     // Assign to global variable 'FS'
     duk_put_prop_string(ctx, -2, "FS");
@@ -4229,6 +5492,12 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     duk_push_c_function(ctx, js_net_getRSSI, 0); duk_put_prop_string(ctx, -2, "getRSSI");
     duk_push_c_function(ctx, js_net_showWiFiPrompt, 0); duk_put_prop_string(ctx, -2, "showWiFiPrompt");
     duk_put_prop_string(ctx, -2, "Network");
+
+    // --- Bluetooth Global Object ---
+    js_init_bluetooth(ctx);
+
+    // --- GPS Global Object ---
+    js_init_gps(ctx);
 
     // --- HttpServer Global Object ---
     duk_push_object(ctx); // HttpServer
@@ -4380,6 +5649,135 @@ void JSBindings::init(duk_context *ctx, TFT_eSPI *tft) {
     duk_push_c_function(ctx, js_ai_vision, DUK_VARARGS); duk_put_prop_string(ctx, -2, "vision");
     duk_push_c_function(ctx, js_ai_status, 0); duk_put_prop_string(ctx, -2, "status");
     duk_put_prop_string(ctx, -2, "AI");
+
+    // --- Global Keyboard Object ---
+    duk_push_object(ctx); // Keyboard
+    duk_push_c_function(ctx, js_keyboard_isAvailable, 0); duk_put_prop_string(ctx, -2, "isAvailable");
+    duk_push_c_function(ctx, js_keyboard_getKey, 0); duk_put_prop_string(ctx, -2, "getKey");
+    duk_push_c_function(ctx, js_keyboard_getEvent, 0); duk_put_prop_string(ctx, -2, "getEvent");
+    duk_push_c_function(ctx, js_keyboard_hasKey, 0); duk_put_prop_string(ctx, -2, "hasKey");
+    duk_push_c_function(ctx, js_keyboard_clear, 0); duk_put_prop_string(ctx, -2, "clear");
+    duk_push_c_function(ctx, js_keyboard_getModifiers, 0); duk_put_prop_string(ctx, -2, "getModifiers");
+    duk_push_c_function(ctx, js_keyboard_setBacklight, 1); duk_put_prop_string(ctx, -2, "setBacklight");
+    duk_push_c_function(ctx, js_keyboard_setBacklightLevel, 1); duk_put_prop_string(ctx, -2, "setBacklightLevel");
+    duk_push_c_function(ctx, js_keyboard_getBacklightLevel, 0); duk_put_prop_string(ctx, -2, "getBacklightLevel");
+    duk_push_c_function(ctx, js_keyboard_readString, 1); duk_put_prop_string(ctx, -2, "readString");
+    duk_put_prop_string(ctx, -2, "Keyboard");
+
+    // --- Global Trackball Object ---
+    duk_push_object(ctx); // Trackball
+    duk_push_c_function(ctx, js_trackball_getState, 0); duk_put_prop_string(ctx, -2, "getState");
+    duk_push_c_function(ctx, js_trackball_getDelta, 0); duk_put_prop_string(ctx, -2, "getDelta");
+    duk_push_c_function(ctx, js_trackball_isPressed, 0); duk_put_prop_string(ctx, -2, "isPressed");
+    duk_push_c_function(ctx, js_trackball_isClicked, 0); duk_put_prop_string(ctx, -2, "isClicked");
+    duk_push_c_function(ctx, js_trackball_getRawCounts, 0); duk_put_prop_string(ctx, -2, "getRawCounts");
+    duk_push_c_function(ctx, js_trackball_reset, 0); duk_put_prop_string(ctx, -2, "reset");
+    duk_put_prop_string(ctx, -2, "Trackball");
+
+    // --- Global Speaker & Audio Objects ---
+    duk_push_object(ctx); // Speaker
+    duk_push_c_function(ctx, js_speaker_playWav, 1); duk_put_prop_string(ctx, -2, "playWav");
+    duk_push_c_function(ctx, js_speaker_playMp3, 1); duk_put_prop_string(ctx, -2, "playMp3");
+    duk_push_c_function(ctx, js_speaker_play, 1); duk_put_prop_string(ctx, -2, "play");
+    duk_push_c_function(ctx, js_speaker_seek, 1); duk_put_prop_string(ctx, -2, "seek");
+    duk_push_c_function(ctx, js_speaker_playTone, 3); duk_put_prop_string(ctx, -2, "playTone");
+    duk_push_c_function(ctx, js_speaker_playMelody, 1); duk_put_prop_string(ctx, -2, "playMelody");
+    duk_push_c_function(ctx, js_speaker_playBeep, 1); duk_put_prop_string(ctx, -2, "playBeep");
+    duk_push_c_function(ctx, js_speaker_stop, 0); duk_put_prop_string(ctx, -2, "stop");
+    duk_push_c_function(ctx, js_speaker_pause, 0); duk_put_prop_string(ctx, -2, "pause");
+    duk_push_c_function(ctx, js_speaker_resume, 0); duk_put_prop_string(ctx, -2, "resume");
+    duk_push_c_function(ctx, js_speaker_isPlaying, 0); duk_put_prop_string(ctx, -2, "isPlaying");
+    duk_push_c_function(ctx, js_speaker_getDuration, 0); duk_put_prop_string(ctx, -2, "getDuration");
+    duk_push_c_function(ctx, js_speaker_getPosition, 0); duk_put_prop_string(ctx, -2, "getPosition");
+    duk_push_c_function(ctx, js_speaker_setVolume, 1); duk_put_prop_string(ctx, -2, "setVolume");
+    duk_push_c_function(ctx, js_speaker_getVolume, 0); duk_put_prop_string(ctx, -2, "getVolume");
+    duk_push_c_function(ctx, js_speaker_mute, 1); duk_put_prop_string(ctx, -2, "mute");
+    duk_push_c_function(ctx, js_speaker_isMuted, 0); duk_put_prop_string(ctx, -2, "isMuted");
+    duk_put_prop_string(ctx, -2, "Speaker");
+
+    // Alias 'Audio' to Speaker functionality
+    duk_push_object(ctx); // Audio
+    duk_push_c_function(ctx, js_speaker_playWav, 1); duk_put_prop_string(ctx, -2, "playWav");
+    duk_push_c_function(ctx, js_speaker_playMp3, 1); duk_put_prop_string(ctx, -2, "playMp3");
+    duk_push_c_function(ctx, js_speaker_play, 1); duk_put_prop_string(ctx, -2, "play");
+    duk_push_c_function(ctx, js_speaker_seek, 1); duk_put_prop_string(ctx, -2, "seek");
+    duk_push_c_function(ctx, js_speaker_playTone, 3); duk_put_prop_string(ctx, -2, "playTone");
+    duk_push_c_function(ctx, js_speaker_playMelody, 1); duk_put_prop_string(ctx, -2, "playMelody");
+    duk_push_c_function(ctx, js_speaker_playBeep, 1); duk_put_prop_string(ctx, -2, "playBeep");
+    duk_push_c_function(ctx, js_speaker_stop, 0); duk_put_prop_string(ctx, -2, "stop");
+    duk_push_c_function(ctx, js_speaker_pause, 0); duk_put_prop_string(ctx, -2, "pause");
+    duk_push_c_function(ctx, js_speaker_resume, 0); duk_put_prop_string(ctx, -2, "resume");
+    duk_push_c_function(ctx, js_speaker_isPlaying, 0); duk_put_prop_string(ctx, -2, "isPlaying");
+    duk_push_c_function(ctx, js_speaker_getDuration, 0); duk_put_prop_string(ctx, -2, "getDuration");
+    duk_push_c_function(ctx, js_speaker_getPosition, 0); duk_put_prop_string(ctx, -2, "getPosition");
+    duk_push_c_function(ctx, js_speaker_setVolume, 1); duk_put_prop_string(ctx, -2, "setVolume");
+    duk_push_c_function(ctx, js_speaker_getVolume, 0); duk_put_prop_string(ctx, -2, "getVolume");
+    duk_push_c_function(ctx, js_speaker_mute, 1); duk_put_prop_string(ctx, -2, "mute");
+    duk_push_c_function(ctx, js_speaker_isMuted, 0); duk_put_prop_string(ctx, -2, "isMuted");
+    duk_put_prop_string(ctx, -2, "Audio");
+
+    // --- Global Image & Display API ---
+    duk_push_c_function(ctx, js_drawImage, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawImage");
+    duk_push_c_function(ctx, js_drawPNG, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawPNG");
+    duk_push_c_function(ctx, js_drawJPG, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawJPG");
+    duk_push_c_function(ctx, js_drawJPG, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawJPEG");
+    duk_push_c_function(ctx, js_drawBMP, 3); duk_put_prop_string(ctx, -2, "drawBMP");
+    duk_push_c_function(ctx, js_getImageInfo, 1); duk_put_prop_string(ctx, -2, "getImageInfo");
+
+    // Global 'Display' and 'Screen' Objects
+    duk_push_object(ctx); // Display
+    duk_push_c_function(ctx, js_fillScreen, 1); duk_put_prop_string(ctx, -2, "fillScreen");
+    duk_push_c_function(ctx, js_fillRect, 5); duk_put_prop_string(ctx, -2, "fillRect");
+    duk_push_c_function(ctx, js_drawRect, 5); duk_put_prop_string(ctx, -2, "drawRect");
+    duk_push_c_function(ctx, js_drawLine, 5); duk_put_prop_string(ctx, -2, "drawLine");
+    duk_push_c_function(ctx, js_drawPixel, 3); duk_put_prop_string(ctx, -2, "drawPixel");
+    duk_push_c_function(ctx, js_drawCircle, 4); duk_put_prop_string(ctx, -2, "drawCircle");
+    duk_push_c_function(ctx, js_fillCircle, 4); duk_put_prop_string(ctx, -2, "fillCircle");
+    duk_push_c_function(ctx, js_drawTriangle, 7); duk_put_prop_string(ctx, -2, "drawTriangle");
+    duk_push_c_function(ctx, js_fillTriangle, 7); duk_put_prop_string(ctx, -2, "fillTriangle");
+    duk_push_c_function(ctx, js_drawRoundRect, 6); duk_put_prop_string(ctx, -2, "drawRoundRect");
+    duk_push_c_function(ctx, js_fillRoundRect, 6); duk_put_prop_string(ctx, -2, "fillRoundRect");
+    duk_push_c_function(ctx, js_drawImage, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawImage");
+    duk_push_c_function(ctx, js_drawPNG, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawPNG");
+    duk_push_c_function(ctx, js_drawJPG, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawJPG");
+    duk_push_c_function(ctx, js_drawJPG, DUK_VARARGS); duk_put_prop_string(ctx, -2, "drawJPEG");
+    duk_push_c_function(ctx, js_drawBMP, 3); duk_put_prop_string(ctx, -2, "drawBMP");
+    duk_push_c_function(ctx, js_getImageInfo, 1); duk_put_prop_string(ctx, -2, "getImageInfo");
+    duk_push_c_function(ctx, js_drawString, 4); duk_put_prop_string(ctx, -2, "drawString");
+    duk_push_c_function(ctx, js_setTextColor, 2); duk_put_prop_string(ctx, -2, "setTextColor");
+    duk_push_c_function(ctx, js_setTextSize, 1); duk_put_prop_string(ctx, -2, "setTextSize");
+    duk_push_c_function(ctx, js_color, 3); duk_put_prop_string(ctx, -2, "color");
+    duk_push_c_function(ctx, js_screenWidth, 0); duk_put_prop_string(ctx, -2, "width");
+    duk_push_c_function(ctx, js_screenHeight, 0); duk_put_prop_string(ctx, -2, "height");
+    duk_push_c_function(ctx, js_screenWidth, 0); duk_put_prop_string(ctx, -2, "screenWidth");
+    duk_push_c_function(ctx, js_screenHeight, 0); duk_put_prop_string(ctx, -2, "screenHeight");
+    duk_push_c_function(ctx, js_createSprite, 2); duk_put_prop_string(ctx, -2, "createSprite");
+    duk_push_c_function(ctx, js_deleteSprite, 0); duk_put_prop_string(ctx, -2, "deleteSprite");
+    duk_push_c_function(ctx, js_pushSprite, 2); duk_put_prop_string(ctx, -2, "pushSprite");
+    duk_push_c_function(ctx, js_bindSprite, 1); duk_put_prop_string(ctx, -2, "bindSprite");
+    duk_dup(ctx, -1);
+    duk_put_prop_string(ctx, -3, "Screen");
+    duk_put_prop_string(ctx, -2, "Display");
+
+    // --- Global Device Object ---
+    duk_push_object(ctx); // Device
+    duk_push_c_function(ctx, js_device_getName, 0); duk_put_prop_string(ctx, -2, "getName");
+    duk_push_c_function(ctx, js_device_hasTrackball, 0); duk_put_prop_string(ctx, -2, "hasTrackball");
+    duk_push_c_function(ctx, js_device_hasKeyboard, 0); duk_put_prop_string(ctx, -2, "hasKeyboard");
+    duk_push_c_function(ctx, js_device_hasSpeaker, 0); duk_put_prop_string(ctx, -2, "hasSpeaker");
+    duk_push_c_function(ctx, js_device_hasTouch, 0); duk_put_prop_string(ctx, -2, "hasTouch");
+    duk_push_c_function(ctx, js_device_hasBattery, 0); duk_put_prop_string(ctx, -2, "hasBattery");
+    duk_push_c_function(ctx, js_device_getBatteryPercent, 0); duk_put_prop_string(ctx, -2, "getBatteryPercent");
+    duk_push_c_function(ctx, js_device_getBatteryVoltage, 0); duk_put_prop_string(ctx, -2, "getBatteryVoltage");
+    duk_push_c_function(ctx, js_device_isCharging, 0); duk_put_prop_string(ctx, -2, "isCharging");
+    duk_push_c_function(ctx, js_device_getChargeTimeRemaining, 0); duk_put_prop_string(ctx, -2, "getChargeTimeRemaining");
+    duk_push_c_function(ctx, js_device_getDischargeTimeRemaining, 0); duk_put_prop_string(ctx, -2, "getDischargeTimeRemaining");
+    duk_push_c_function(ctx, js_device_setBrightness, 1); duk_put_prop_string(ctx, -2, "setBrightness");
+    duk_push_c_function(ctx, js_device_getBrightness, 0); duk_put_prop_string(ctx, -2, "getBrightness");
+    duk_put_prop_string(ctx, -2, "Device");
+
+    // --- Native Local AI Bindings (System.ai / System.localAI / LocalAI) ---
+    LocalAI::AIBindings::registerBindings(ctx);
 
     duk_pop(ctx); // pop global object
 }

@@ -9,6 +9,15 @@
 #include "filemanager_html.h"
 #include "../Kernel/TimeManager.h"
 #include "../Kernel/WiFiManager.h"
+#include "../Hal/Bluetooth/BluetoothEngine.h"
+#include "../Hal/Boards/Board.h"
+#include <esp_wifi.h>
+
+#if defined(TARGET_T_DECK)
+#ifndef RADIO_CS_PIN
+#define RADIO_CS_PIN 9
+#endif
+#endif
 
 static AsyncWebServer *server = nullptr;
 static String s_adminUser = "admin";
@@ -124,7 +133,7 @@ static const char login_html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>KryonOS — Web Server</title>
+<title>KryonOS - Web Server</title>
 <style>
   :root {
     --bg-canvas: #1e1e1e;
@@ -756,7 +765,7 @@ static const char login_html[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     </div>
     <div class="modal-step">
       <span class="step-num">2</span>
-      <span>From Launcher, open <strong>Settings</strong> &rarr; <strong>Wifi Options</strong> &rarr; <strong>Web Server</strong>.</span>
+      <span>From Launcher, open <strong>Settings</strong> &rarr; <strong>Connections</strong> &rarr; <strong>WiFi Options</strong> &rarr; <strong>Web Server</strong>.</span>
     </div>
     <div class="modal-step">
       <span class="step-num">3</span>
@@ -1022,9 +1031,24 @@ static bool isProtectedPath(const String& path) {
     return false;
 }
 
+static inline void prepareSDSPI() {
+#if defined(TFT_CS) && (TFT_CS >= 0)
+    digitalWrite(TFT_CS, HIGH);
+#endif
+#if defined(RADIO_CS_PIN) && (RADIO_CS_PIN >= 0)
+    digitalWrite(RADIO_CS_PIN, HIGH);
+#elif defined(TARGET_T_DECK)
+    digitalWrite(9, HIGH);
+#endif
+}
+
 // Helper to get FS based on path
 static fs::FS* getFSFromPath(String& path) {
     if (path.startsWith("/sd")) {
+        prepareSDSPI();
+        if (!FileSystem::isSDMounted()) {
+            FileSystem::mountSD();
+        }
         if (!FileSystem::isSDMounted()) return nullptr;
         path = path.substring(3);
         if (path == "") path = "/";
@@ -1063,21 +1087,37 @@ bool WebManager::startServer() {
         return false;
     }
 
+    // If Bluetooth is active, disable it to reclaim ~65KB of internal SRAM and allow WiFi.setSleep(false)
+    if (BluetoothEngine::isEnabled()) {
+        BluetoothEngine::disable();
+    }
+
+    // Keep WiFi modem sleep disabled so external devices (PC, Phone) can connect reliably
+    WiFi.setSleep(false);
+    esp_wifi_set_ps(WIFI_PS_NONE);
+
     loadWebCredentials();
     server = new AsyncWebServer(80);
 
-    // Root page - serves file manager HTML UI only when authenticated; otherwise serves clean standalone login gateway with strict anti-caching
-    server->on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    // Root page & /index.html - serves file manager HTML UI only when authenticated; otherwise serves clean standalone login gateway with strict anti-caching
+    auto handleRoot = [](AsyncWebServerRequest *request){
         AsyncWebServerResponse *response;
         if (isAuthenticated(request)) {
-            response = request->beginResponse(200, "text/html", filemanager_html);
+            response = request->beginResponse(200, "text/html", (const uint8_t*)filemanager_html, strlen(filemanager_html));
         } else {
-            response = request->beginResponse(200, "text/html", login_html);
+            response = request->beginResponse(200, "text/html", (const uint8_t*)login_html, strlen(login_html));
         }
         response->addHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
         response->addHeader("Pragma", "no-cache");
         response->addHeader("Expires", "0");
         request->send(response);
+    };
+
+    server->on("/", HTTP_GET, handleRoot);
+    server->on("/index.html", HTTP_GET, handleRoot);
+
+    server->on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request){
+        request->send(204);
     });
 
     // Session Login Endpoint (Rate-Limited & Sanitized)
@@ -1169,16 +1209,35 @@ bool WebManager::startServer() {
         lfs["free"] = lfsFree;
 
         // SD Card
+        prepareSDSPI();
+        if (!FileSystem::isSDMounted()) {
+            FileSystem::mountSD();
+        }
         bool sdMounted = FileSystem::isSDMounted();
+        if (sdMounted) {
+            File rootCheck = SD.open("/");
+            if (!rootCheck || !rootCheck.isDirectory()) {
+                if (rootCheck) rootCheck.close();
+                FileSystem::unmountSD();
+                FileSystem::mountSD();
+                sdMounted = FileSystem::isSDMounted();
+            } else {
+                rootCheck.close();
+            }
+        }
         JsonObject sd = doc["sd"].to<JsonObject>();
         sd["mounted"] = sdMounted;
         if (sdMounted) {
             uint64_t sdTotal = SD.totalBytes();
+            if (sdTotal == 0) {
+                sdTotal = SD.cardSize();
+            }
             uint64_t sdUsed = SD.usedBytes();
             uint64_t sdFree = (sdTotal > sdUsed) ? (sdTotal - sdUsed) : 0;
             sd["total"] = sdTotal;
             sd["used"] = sdUsed;
             sd["free"] = sdFree;
+            sd["cardSize"] = SD.cardSize();
         } else {
             sd["total"] = 0;
             sd["used"] = 0;
@@ -1227,8 +1286,23 @@ bool WebManager::startServer() {
             return;
         }
 
+        while (path.length() > 1 && path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
+        }
+
+        prepareSDSPI();
+
         File dir = fs->open(path);
+        if ((!dir || !dir.isDirectory()) && origPath.startsWith("/sd")) {
+            if (dir) dir.close();
+            prepareSDSPI();
+            FileSystem::unmountSD();
+            if (FileSystem::mountSD()) {
+                dir = fs->open(path);
+            }
+        }
         if (!dir || !dir.isDirectory()) {
+            if (dir) dir.close();
             request->send(404, "text/plain", "Not a directory");
             return;
         }
@@ -1239,7 +1313,10 @@ bool WebManager::startServer() {
         File file = dir.openNextFile();
         while (file) {
             String name = String(file.name());
-            if (name != "system" && !name.startsWith("system/") && name != "wifi_credentials.enc" && name != "app_permissions.json") {
+            if (name.endsWith("/")) name = name.substring(0, name.length() - 1);
+            int lastSlash = name.lastIndexOf('/');
+            if (lastSlash >= 0) name = name.substring(lastSlash + 1);
+            if (name.length() > 0 && name != "system" && !name.startsWith("system/") && name != "wifi_credentials.enc" && name != "app_permissions.json") {
                 JsonObject item = array.add<JsonObject>();
                 item["name"] = name;
                 item["type"] = file.isDirectory() ? "dir" : "file";
@@ -1419,15 +1496,40 @@ bool WebManager::startServer() {
             return;
         }
 
-        if (type == "folder") {
-            ensureParentDirectories(fs, path);
-            fs->mkdir(path);
-        } else {
-            ensureParentDirectories(fs, path);
-            File f = fs->open(path, FILE_WRITE);
-            if (f) f.close();
+        while (path.length() > 1 && path.endsWith("/")) {
+            path = path.substring(0, path.length() - 1);
         }
-        request->send(200, "text/plain", "OK");
+
+        prepareSDSPI();
+
+        auto attemptCreate = [&]() -> bool {
+            if (type == "folder") {
+                ensureParentDirectories(fs, path);
+                return fs->mkdir(path) || fs->exists(path);
+            } else {
+                ensureParentDirectories(fs, path);
+                File f = fs->open(path, FILE_WRITE);
+                if (f) {
+                    f.close();
+                    return true;
+                }
+                return false;
+            }
+        };
+
+        bool ok = attemptCreate();
+        if (!ok && origPath.startsWith("/sd")) {
+            prepareSDSPI();
+            FileSystem::unmountSD();
+            if (FileSystem::mountSD()) {
+                ok = attemptCreate();
+            }
+        }
+        if (ok) {
+            request->send(200, "text/plain", "OK");
+        } else {
+            request->send(500, "text/plain", "Creation failed");
+        }
     });
 
     server->on("/api/rename", HTTP_POST, [](AsyncWebServerRequest *request){
@@ -1477,7 +1579,7 @@ bool WebManager::startServer() {
         
         // Intercept app uploads and respect default installation location
         if (path.startsWith("/local/apps/") || path.startsWith("/sd/apps/")) {
-            bool defaultSD = FileSystem::exists("/local/config_install_sd.txt");
+            bool defaultSD = FileSystem::exists("/local/system/config_install_sd.txt") || FileSystem::exists("/local/config_install_sd.txt");
             int appsIndex = path.indexOf("/apps/");
             String relativePath = path.substring(appsIndex + 6);
             
@@ -1503,6 +1605,18 @@ bool WebManager::startServer() {
                 request->_tempFile.close();
             }
         }
+    });
+
+    server->onNotFound([](AsyncWebServerRequest *request) {
+        if (request->method() == HTTP_OPTIONS) {
+            AsyncWebServerResponse *response = request->beginResponse(204);
+            response->addHeader("Access-Control-Allow-Origin", "*");
+            response->addHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+            response->addHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+            request->send(response);
+            return;
+        }
+        request->send(404, "text/plain", "Not Found");
     });
 
     server->begin();

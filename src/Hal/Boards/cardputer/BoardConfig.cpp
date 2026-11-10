@@ -307,11 +307,26 @@ bool getTouchRaw(uint16_t *x, uint16_t *y) {
     return false;
 }
 void loadTouchCalibration(void) {}
+static uint8_t s_cp_bl = 100;
+
 void setBacklight(uint8_t brightness) {
 #if defined(TFT_BL)
     analogWrite(TFT_BL, brightness);
 #endif
 }
+
+void setBacklightLevel(uint8_t percent) {
+    s_cp_bl = constrain(percent, 0, 100);
+    setBacklight((uint8_t)map(s_cp_bl, 0, 100, 0, 255));
+}
+
+uint8_t getBacklightLevel(void) {
+    return s_cp_bl;
+}
+
+void setKeyboardBacklight(bool enable) { (void)enable; }
+void setKeyboardBacklightLevel(uint8_t percent) { (void)percent; }
+uint8_t getKeyboardBacklightLevel(void) { return 0; }
 void setRGBLED(uint8_t, uint8_t, uint8_t, bool) {}
 
 // ============================================================================
@@ -384,7 +399,9 @@ void deinitSD(void) {
 
 uint64_t getSDTotalBytes(void) {
     if (SD.cardType() == CARD_NONE) return 0;
-    return SD.totalBytes();
+    uint64_t total = SD.totalBytes();
+    if (total == 0) total = SD.cardSize();
+    return total;
 }
 
 uint64_t getSDUsedBytes(void) {
@@ -408,9 +425,24 @@ float getBatteryVoltage(void) {
 int getBatteryPercent(void) {
     float v = getBatteryVoltage();
     if (v >= 4.2f) return 100;
-    if (v <= 3.3f) return 0;
-    int percent = (int)((v - 3.3f) / (4.2f - 3.3f) * 100.0f);
+    if (v <= 3.42f) return 0;
+    int percent = (int)((v - 3.42f) / (4.2f - 3.42f) * 100.0f);
     return constrain(percent, 0, 100);
+}
+
+bool isChargerConnected(void) {
+    return getBatteryVoltage() >= 4.18f;
+}
+
+int getEstimatedChargeTimeMins(void) {
+    int pct = getBatteryPercent();
+    if (pct >= 95) return 15;
+    return (int)((100 - pct) * 1.2f);
+}
+
+int getEstimatedDischargeTimeMins(void) {
+    int pct = getBatteryPercent();
+    return (int)(pct * 2.8f);
 }
 
 #endif // TARGET_CARDPUTER

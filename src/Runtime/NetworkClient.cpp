@@ -18,10 +18,7 @@ HttpResponse NetworkClient::request(const String& method, const String& url, con
     }
 
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(timeoutMs);
-    http.setReuse(false);
-    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
+    TLSHelper::configureHTTP(http, timeoutMs);
 
     WiFiClientSecure secureClient;
     WiFiClient plainClient;
@@ -83,10 +80,7 @@ bool NetworkClient::downloadFile(const String& url, const String& destPath,
     }
 
     HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(timeoutMs);
-    http.setReuse(false);
-    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
+    TLSHelper::configureHTTP(http, timeoutMs);
 
     WiFiClientSecure secureClient;
     WiFiClient plainClient;

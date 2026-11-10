@@ -3,9 +3,12 @@
 #include "../FileSystem/FileSystem.h"
 #include "../WebManager/WebManager.h"
 #include "../Hal/Crypto/CryptoEngine.h"
+#include "../Hal/Bluetooth/BluetoothEngine.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <esp_task_wdt.h>
+#include <esp_wifi.h>
+#include <lwip/dns.h>
 #include <algorithm>
 
 std::vector<SavedNetwork> WiFiManager::savedNetworks;
@@ -27,6 +30,14 @@ void WiFiManager::init() {
         return;
     }
 
+    // Explicitly disable WiFi modem sleep when Bluetooth is off to guarantee maximum throughput,
+    // prevent external TCP SYN packet drops on Web Server (port 80),
+    // and eliminate packet drop during TLS handshakes and DNS lookups.
+    WiFi.setSleep(BluetoothEngine::isEnabled());
+    if (!BluetoothEngine::isEnabled()) {
+        esp_wifi_set_ps(WIFI_PS_NONE);
+    }
+
     // Attempt initial smart auto connect
     smartAutoConnect();
 }
@@ -41,6 +52,7 @@ void WiFiManager::setEnabled(bool enable) {
             FileSystem::deleteFile("/local/nowifi.txt");
         }
         currentState = WIFI_STATE_DISCONNECTED;
+        WiFi.setSleep(BluetoothEngine::isEnabled());
     } else {
         FileSystem::writeTextFile("/local/nowifi.txt", "1");
         WiFi.disconnect(true);
@@ -52,7 +64,7 @@ void WiFiManager::setEnabled(bool enable) {
 
 bool WiFiManager::isConnected() {
     if (!isEnabled()) return false;
-    return (WiFi.status() == WL_CONNECTED);
+    return (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0));
 }
 
 bool WiFiManager::hasInternet() {
@@ -71,19 +83,25 @@ bool WiFiManager::hasInternet() {
 }
 
 bool WiFiManager::checkInternetConnectivity(uint32_t timeoutMs) {
-    if (WiFi.status() != WL_CONNECTED) return false;
+    if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) return false;
 
-    HTTPClient http;
-    http.setTimeout(timeoutMs);
-    http.setReuse(false);
-    http.begin(CAPTIVE_PORTAL_URL);
+    // Up to 2 attempts with brief gap to absorb initial DNS / ARP latency
+    for (int attempt = 0; attempt < 2; attempt++) {
+        HTTPClient http;
+        http.setTimeout(timeoutMs);
+        http.setReuse(false);
+        http.begin(CAPTIVE_PORTAL_URL);
 
-    int httpCode = http.GET();
-    http.end();
+        int httpCode = http.GET();
+        http.end();
 
-    // 204 No Content is standard Google captive portal success, 200 OK also indicates WAN access
-    if (httpCode == 204 || httpCode == 200) {
-        return true;
+        // 204 No Content is standard Google captive portal success, 200 OK also indicates WAN access
+        if (httpCode == 204 || httpCode == 200) {
+            return true;
+        }
+        if (attempt == 0) {
+            vTaskDelay(pdMS_TO_TICKS(250));
+        }
     }
     return false;
 }
@@ -202,22 +220,37 @@ bool WiFiManager::connectTo(const String& ssid, const String& password, uint32_t
     vTaskDelay(pdMS_TO_TICKS(50));
     WiFi.mode(WIFI_STA);
 
+    // Keep WiFi modem sleep disabled when Bluetooth is off
+    WiFi.setSleep(BluetoothEngine::isEnabled());
+
     if (password.length() > 0) {
         WiFi.begin(ssid.c_str(), password.c_str());
     } else {
         WiFi.begin(ssid.c_str());
     }
 
+    // Wait until 802.11 link is established AND valid DHCP IPv4 address is assigned
     unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && (millis() - start) < timeoutMs) {
-        vTaskDelay(pdMS_TO_TICKS(200));
+    while ((WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) && (millis() - start) < timeoutMs) {
+        vTaskDelay(pdMS_TO_TICKS(100));
         esp_task_wdt_reset();
     }
 
-    if (WiFi.status() == WL_CONNECTED) {
+    if (WiFi.status() == WL_CONNECTED && WiFi.localIP() != IPAddress(0, 0, 0, 0)) {
+        // Safely register Google (8.8.8.8) fallback DNS server at secondary index 1 (DNS_MAX_SERVERS == 2 in lwIP)
+        ip_addr_t dns1;
+        IP_ADDR4(&dns1, 8, 8, 8, 8);
+        dns_setserver(1, &dns1);
+
+        // Keep modem active for responsive HTTP server & client operations (unless Bluetooth coexistence is active)
+        WiFi.setSleep(BluetoothEngine::isEnabled());
+        if (!BluetoothEngine::isEnabled()) {
+            esp_wifi_set_ps(WIFI_PS_NONE);
+        }
+
         // Save/update in known networks
         saveNetwork(ssid, password);
-        internetReachable = checkInternetConnectivity(3000);
+        internetReachable = checkInternetConnectivity(3500);
         lastInternetCheck = millis();
         currentState = internetReachable ? WIFI_STATE_ONLINE : WIFI_STATE_LOCAL_ONLY;
         if (internetReachable) {
@@ -293,14 +326,14 @@ bool WiFiManager::smartAutoConnect() {
         Serial.printf("[WiFiManager] Attempting candidate #%d: '%s' (RSSI: %d dBm)\n", 
                       (int)c + 1, cand.ssid.c_str(), cand.rssi);
 
-        bool connected = connectTo(cand.ssid, cand.password, 8000);
+        bool connected = connectTo(cand.ssid, cand.password, 10000);
         if (!connected) {
             Serial.printf("[WiFiManager] Association failed for '%s'. Trying next candidate...\n", cand.ssid.c_str());
             continue;
         }
 
         // Test WAN internet connectivity
-        bool wanOk = checkInternetConnectivity(3000);
+        bool wanOk = checkInternetConnectivity(3500);
         if (wanOk) {
             Serial.printf("[WiFiManager] Online WAN connectivity confirmed on '%s'!\n", cand.ssid.c_str());
             internetReachable = true;
@@ -309,10 +342,10 @@ bool WiFiManager::smartAutoConnect() {
             return true;
         }
 
-        // WAN failed on this AP. If another candidate exists, try it
+        // If WAN check failed on this AP, only disconnect if there is another AP in range that was actually scanned
         if (c + 1 < candidates.size()) {
-            Serial.printf("[WiFiManager] '%s' has NO WAN internet. Disconnecting to try candidate #%d...\n", 
-                          cand.ssid.c_str(), (int)c + 2);
+            Serial.printf("[WiFiManager] '%s' has NO WAN internet. Trying next candidate...\n", 
+                          cand.ssid.c_str());
             WiFi.disconnect();
             vTaskDelay(pdMS_TO_TICKS(100));
             continue;
@@ -333,22 +366,19 @@ bool WiFiManager::smartAutoConnect() {
 void WiFiManager::backgroundLoop() {
     if (!isEnabled()) return;
 
-    // Check if WiFi disconnected unexpectedly
+    // Check if WiFi disconnected unexpectedly or lost IP lease
     if (currentState != WIFI_STATE_DISABLED && currentState != WIFI_STATE_CONNECTING) {
-        if (WiFi.status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
             if (currentState != WIFI_STATE_DISCONNECTED) {
                 currentState = WIFI_STATE_DISCONNECTED;
                 internetReachable = false;
-                Serial.println("[WiFiManager] WiFi link dropped! Scheduling auto-reconnect...");
-            }
-
-            // Retry reconnect every 15 seconds
-            if (millis() - lastReconnectAttempt > 15000) {
-                lastReconnectAttempt = millis();
-                smartAutoConnect();
+                Serial.println("[WiFiManager] WiFi link or IP lease lost.");
+                if (WebManager::isServerRunning()) {
+                    WebManager::stopServer();
+                }
             }
         } else {
-            // Connected: if user has enabled Web Server and it's not yet started, launch it
+            // Connected with valid IP: if user has enabled Web Server and it's not yet started, launch it
             if (FileSystem::exists("/local/web_on.txt") && !WebManager::isServerRunning()) {
                 WebManager::startServer();
             }

@@ -13,6 +13,15 @@ public:
     static void drawAboutLoading(int percent, const String& statusText);
     static void handleAboutTouch(uint16_t x, uint16_t y);
 
+    static void drawConnections();
+    static void handleConnectionsTouch(uint16_t x, uint16_t y);
+
+    static void drawBluetooth();
+    static void handleBluetoothTouch(uint16_t x, uint16_t y);
+
+    static void drawGPSSettings();
+    static void handleGPSSettingsTouch(uint16_t x, uint16_t y);
+
     static void drawWiFi();
     static void handleWiFiTouch(uint16_t x, uint16_t y);
 
@@ -31,6 +40,21 @@ public:
     static void drawTimeManual();
     static void handleTimeManualTouch(uint16_t x, uint16_t y);
 
+    static void drawDisplay();
+    static void handleDisplayTouch(uint16_t x, uint16_t y);
+
+    static void drawKeyboard();
+    static void handleKeyboardTouch(uint16_t x, uint16_t y);
+
+    static void drawBattery();
+    static void handleBatteryTouch(uint16_t x, uint16_t y);
+
+    static uint8_t getDisplayBrightness();
+    static uint16_t getDisplayTimeoutSec();
+    static uint8_t getKeyboardBrightness();
+    static void loadPreferences();
+    static void feedKeyboardInput(char c);
+
     static void scanAndConnectWiFi();
 
     static void drawUpdater(bool isBootCheck = false);
@@ -38,6 +62,10 @@ public:
     static bool checkUpdateSilent();
     static void drawOTAProgress(int percent, size_t currentBytes, size_t totalBytes, float speedKBs, const String& status);
     static void drawOTAError(const String& errorMsg);
+
+    static void drawBackup();
+    static void handleBackupTouch(uint16_t x, uint16_t y);
+    static void feedBackupKeyboard(char c);
 
 private:
     static TFT_eSPI *tftInstance;

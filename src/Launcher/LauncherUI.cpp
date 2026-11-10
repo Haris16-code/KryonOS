@@ -2,6 +2,7 @@
 #include "../Kernel/Core/HarixKernel.h"
 #include "../FileSystem/FileSystem.h"
 #include "../Kernel/Services/IPCManager.h"
+#include "../Hal/Boards/Board.h"
 #include <ArduinoJson.h>
 
 extern int currentState;
@@ -47,9 +48,12 @@ void LauncherUI::scanLocalApps() {
             Serial.printf("  Entry[%d]: name='%s' path='%s' isDir=%d\n", 
                           i, entries[i].name.c_str(), entries[i].path.c_str(), entries[i].isDir);
             
-            // Draw loading bar
+            // Draw loading bar inside the boot outline box (bootCX - 102, bootCY + 30, 204, 14)
             if (tftInstance) {
-                tftInstance->fillRect(20, 200, (i * 200) / count, 10, TFT_GREEN);
+                int16_t bootCX = tftInstance->width() / 2;
+                int16_t bootCY = tftInstance->height() / 2;
+                int fillW = ((i + 1) * 200) / count;
+                tftInstance->fillRect(bootCX - 100, bootCY + 32, fillW, 10, TFT_GREEN);
             }
             
             // 1. Check if it's an app package (has app.json)
@@ -138,26 +142,33 @@ void LauncherUI::scanLocalApps() {
 void LauncherUI::draw() {
     if (!tftInstance) return;
     
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK); // Header bg
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
-    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("KryonOS Home", 120, 21, 2);
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
+
+    drawSystemTopBar(tftInstance, "KryonOS Home", TFT_GREEN);
     
+    int footerH = 30;
+    int footerY = screenH - footerH - 5;
+    int listTop = 42;
+    int listBottom = footerY - 4;
+    int listHeight = listBottom - listTop;
+    int itemH = (screenH < 260) ? 26 : 30;
+    int itemsPerPage = listHeight / itemH;
+    if (itemsPerPage < 4) itemsPerPage = 4;
+
     // Clear only the list area to prevent full screen flicker
-    tftInstance->fillRect(10, 45, 220, 230, TFT_BLACK);
+    tftInstance->fillRect(8, listTop, screenW - 16, listHeight, TFT_BLACK);
 
     if (needsRescan) {
         scanLocalApps();
         needsRescan = false;
         // Re-clear after scanning as the loading bar might have been drawn
-        tftInstance->fillRect(10, 45, 220, 230, TFT_BLACK);
+        tftInstance->fillRect(8, listTop, screenW - 16, listHeight, TFT_BLACK);
     }
 
     int totalItems = appCount + 7; // +7 for SYSTEM, 5 system apps, APPS
-    int yPos = 45;
-    int itemsPerPage = 7;
+    int yPos = listTop;
+    int itemW = screenW - 24; // room for scrollbar
     
     for (int i = 0; i < itemsPerPage; i++) {
         int listIndex = scrollOffset + i;
@@ -179,33 +190,33 @@ void LauncherUI::draw() {
         }
         
         if (isHeader) {
-            tftInstance->fillRect(10, yPos, 220, 25, TFT_BLACK);
+            tftInstance->fillRect(10, yPos, itemW, itemH - 3, TFT_BLACK);
             tftInstance->setTextColor(TFT_DARKGREY, TFT_BLACK);
             tftInstance->setTextDatum(ML_DATUM);
-            tftInstance->drawString(itemName.c_str(), 15, yPos + 12, 2);
+            tftInstance->drawString(itemName.c_str(), 15, yPos + itemH / 2, 2);
         } else if (listIndex == selectedIndex) {
             // Highlighted Item
-            tftInstance->fillRect(10, yPos, 220, 25, TFT_WHITE);
+            tftInstance->fillRect(10, yPos, itemW, itemH - 3, TFT_WHITE);
             tftInstance->setTextColor(TFT_BLACK, TFT_WHITE);
             tftInstance->setTextDatum(ML_DATUM);
-            tftInstance->drawString(("> " + itemName).c_str(), 15, yPos + 12, 2);
+            tftInstance->drawString(("> " + itemName).c_str(), 15, yPos + itemH / 2, 2);
         } else {
             // Normal Item
             tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
             tftInstance->setTextDatum(ML_DATUM);
-            tftInstance->drawString(("  " + itemName).c_str(), 15, yPos + 12, 2);
+            tftInstance->drawString(("  " + itemName).c_str(), 15, yPos + itemH / 2, 2);
         }
         
-        yPos += 30;
+        yPos += itemH;
     }
 
     // Draw Scrollbar
     if (totalItems > itemsPerPage) {
-        int sbX = 232;
-        int sbY = 45;
-        int sbHeight = 230;
+        int sbX = screenW - 9;
+        int sbY = listTop;
+        int sbHeight = listHeight;
         int thumbHeight = (sbHeight * itemsPerPage) / totalItems;
-        if (thumbHeight < 20) thumbHeight = 20;
+        if (thumbHeight < 15) thumbHeight = 15;
         int maxThumbY = sbHeight - thumbHeight;
         int thumbY = sbY + (scrollOffset * maxThumbY) / (totalItems - itemsPerPage);
         
@@ -214,14 +225,16 @@ void LauncherUI::draw() {
     }
 
     // Touch Footer
-    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    tftInstance->drawRoundRect(5, footerY, screenW - 10, footerH, 5, TFT_WHITE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("UP", 30, 300, 2);
-    tftInstance->drawString("|", 60, 300, 2);
-    tftInstance->drawString("SEL", 120, 300, 2);
-    tftInstance->drawString("|", 180, 300, 2);
-    tftInstance->drawString("DN", 210, 300, 2);
+    int colW = (screenW - 10) / 3;
+    int midY = footerY + footerH / 2;
+    tftInstance->drawString("UP", 5 + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + colW, midY, 2);
+    tftInstance->drawString("SEL", 5 + colW + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + 2 * colW, midY, 2);
+    tftInstance->drawString("DN", 5 + 2 * colW + colW / 2, midY, 2);
 }
 
 static void runApp(TFT_eSPI* tft, const String& path, bool isFolder) {
@@ -265,21 +278,34 @@ static void runApp(TFT_eSPI* tft, const String& path, bool isFolder) {
         break;
     }
     
-    // Draw exit button
-    tft->fillRoundRect(200, 0, 40, 30, 5, TFT_RED);
+    // Draw exit button in top-right corner
+    int16_t sw = tft ? tft->width() : 240;
+    tft->fillRoundRect(sw - 40, 0, 40, 30, 5, TFT_RED);
     tft->setTextColor(TFT_WHITE, TFT_RED);
     tft->setTextDatum(MC_DATUM);
-    tft->drawString("X", 220, 15, 2);
+    tft->drawString("X", sw - 20, 15, 2);
 }
 
 void LauncherUI::handleTouch(uint16_t x, uint16_t y) {
+    if (!tftInstance) return;
     extern int currentState;
+    
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
+    int footerH = 30;
+    int footerY = screenH - footerH - 5;
+    int listTop = 42;
+    int listBottom = footerY - 4;
+    int listHeight = listBottom - listTop;
+    int itemH = (screenH < 260) ? 26 : 30;
+    int itemsPerPage = listHeight / itemH;
+    if (itemsPerPage < 4) itemsPerPage = 4;
     
     int totalItems = appCount + 7;
     
-    // Check list item touch first (y between 45 and 270)
-    if (y >= 45 && y <= 270) {
-        int clickedRelativeIndex = (y - 45) / 30;
+    // Check list item touch
+    if (y >= listTop && y < listBottom) {
+        int clickedRelativeIndex = (y - listTop) / itemH;
         int clickedAbsoluteIndex = scrollOffset + clickedRelativeIndex;
         
         if (clickedAbsoluteIndex < totalItems && clickedAbsoluteIndex != 0 && clickedAbsoluteIndex != 6) {
@@ -305,9 +331,11 @@ void LauncherUI::handleTouch(uint16_t x, uint16_t y) {
         return;
     }
 
-    if (y >= 285 && y <= 315) {
-        // Footer Buttons
-        if (x < 60) { // UP
+    if (y >= footerY) {
+        int colW = (screenW - 10) / 3;
+        int col1 = 5 + colW;
+        int col2 = 5 + 2 * colW;
+        if (x < col1) { // UP
             if (selectedIndex > 1) {
                 selectedIndex--;
                 if (selectedIndex == 6) selectedIndex--;
@@ -324,7 +352,7 @@ void LauncherUI::handleTouch(uint16_t x, uint16_t y) {
                 scrollOffset = 0;
                 draw();
             }
-        } else if (x > 60 && x < 180) { // SEL
+        } else if (x >= col1 && x < col2) { // SEL
             if (selectedIndex == 1) {
                 currentState = 13; // STATE_APP_STORE
             } else if (selectedIndex == 2) {
@@ -339,11 +367,11 @@ void LauncherUI::handleTouch(uint16_t x, uint16_t y) {
                 int appIndex = selectedIndex - 7;
                 runApp(tftInstance, appPaths[appIndex], appIsFolder[appIndex]);
             }
-        } else if (x > 180) { // DN
+        } else if (x >= col2) { // DN
             if (selectedIndex < totalItems - 1) {
                 selectedIndex++;
                 if (selectedIndex == 6) selectedIndex++;
-                if (selectedIndex >= scrollOffset + 7) scrollOffset = selectedIndex - 6;
+                if (selectedIndex >= scrollOffset + itemsPerPage) scrollOffset = selectedIndex - (itemsPerPage - 1);
                 draw();
             }
         }

@@ -1,9 +1,56 @@
 #include "FileSystem.h"
 #include "Hal/Boards/Board.h"
 #include <mbedtls/md5.h>
+#include <vector>
 
 static SPIClass *sdSPI = nullptr;
 static bool sdMounted = false;
+static SemaphoreHandle_t s_fs_mutex = nullptr;
+
+void FileSystem::lock() {
+    if (s_fs_mutex) xSemaphoreTakeRecursive(s_fs_mutex, portMAX_DELAY);
+}
+
+void FileSystem::unlock() {
+    if (s_fs_mutex) xSemaphoreGiveRecursive(s_fs_mutex);
+}
+
+static bool validatePathComponents(const char* path, size_t maxComponentLen) {
+    if (!path) return false;
+    const char* start = path;
+    while (*start != '\0') {
+        while (*start == '/') start++;
+        if (*start == '\0') break;
+        const char* end = strchr(start, '/');
+        size_t len = end ? (size_t)(end - start) : strlen(start);
+        if (len > maxComponentLen) return false;
+        if (!end) break;
+        start = end + 1;
+    }
+    return true;
+}
+
+static bool ensureParentDir(fs::FS* targetFS, const String& relPath) {
+    if (!targetFS) return false;
+    int lastSlash = relPath.lastIndexOf('/');
+    if (lastSlash > 0) {
+        String parentDir = relPath.substring(0, lastSlash);
+        if (!targetFS->exists(parentDir.c_str())) {
+            String current = "";
+            int start = (parentDir.startsWith("/")) ? 1 : 0;
+            while (start < parentDir.length()) {
+                int nextSlash = parentDir.indexOf('/', start);
+                if (nextSlash == -1) nextSlash = parentDir.length();
+                current += "/" + parentDir.substring(start, nextSlash);
+                if (!targetFS->exists(current.c_str())) {
+                    targetFS->mkdir(current.c_str());
+                }
+                start = nextSlash + 1;
+            }
+        }
+    }
+    return true;
+}
 
 bool FileSystem::isSDMounted() {
     return sdMounted;
@@ -39,6 +86,11 @@ static fs::FS* getTargetFS(const char* path, String& relPath) {
 
 bool FileSystem::init() {
     bool success = true;
+
+    // One-time mutex initialization before any filesystem access or task launch
+    if (!s_fs_mutex) {
+        s_fs_mutex = xSemaphoreCreateRecursiveMutex();
+    }
     
     // Initialize LittleFS (format on first boot after flash erase)
     if (!LittleFS.begin(true)) {
@@ -72,7 +124,7 @@ bool FileSystem::init() {
     // NOTE: key this off the *chip*, never off ARDUINO_USB_CDC_ON_BOOT. The Arduino core always
     // defines that macro -- as 0 when USB CDC is off (cores/esp32/HardwareSerial.h) -- so testing it
     // with a bare defined() compiles the ESP32-S3 pin map into classic-ESP32 builds.
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(TARGET_T_DECK)
     pinMode(42, OUTPUT);
     digitalWrite(42, HIGH);    // De-select SD card CS during startup
     pinMode(39, INPUT_PULLUP); // Enable internal pull-up on MISO/DO for reliable card response
@@ -127,7 +179,7 @@ bool FileSystem::init() {
     } else {
         Serial.println("SD Card: Mount failed (Verify 5V power, FAT32 format, & wiring: CS=42, MOSI=40, MISO=39, SCK=41)");
     }
-#elif defined(TARGET_CYD)
+#elif defined(TARGET_CYD) || defined(TARGET_T_DECK)
     // CYD has its own micro-SD slot on a dedicated VSPI bus. Delegate to the board layer so the pin
     // map lives in one place (cyd/BoardConfig.cpp). Do not fold this into the #else below: that one
     // is the esp32doit-devkit-v1 map, whose SCK/MOSI 14/13 and CS 15 are this board's TFT pins.
@@ -156,6 +208,9 @@ File FileSystem::openFile(const char* path, const char* mode) {
     String relPath;
     fs::FS* targetFS = getTargetFS(path, relPath);
     if (!targetFS) return File();
+    if (mode && (strchr(mode, 'w') || strchr(mode, 'a'))) {
+        ensureParentDir(targetFS, relPath);
+    }
     return targetFS->open(relPath.c_str(), mode);
 }
 
@@ -205,6 +260,7 @@ bool FileSystem::writeTextFile(const char* path, const char* content) {
     fs::FS* targetFS = getTargetFS(path, relPath);
     if (!targetFS) return false;
     
+    ensureParentDir(targetFS, relPath);
     File file = targetFS->open(relPath.c_str(), FILE_WRITE);
     if (!file) {
         return false;
@@ -321,7 +377,13 @@ bool FileSystem::readCalData(uint16_t* calData) {
         // In TFT_eSPI, calData format is: [x0, deltaX, y0, deltaY, flags]
         // deltaX (calData[1]) and deltaY (calData[3]) must be reasonably large (typically 1500-3800)
         // If they are < 500 or > 4096, or if all are 0, the data is invalid/corrupt
-        if (calData[1] < 500 || calData[1] > 4096 || calData[3] < 500 || calData[3] > 4096) {
+        // Capacitive panels (T-Deck) report small raw ranges (~240x320), so allow smaller deltas.
+#if defined(TARGET_T_DECK)
+        const uint16_t kMinDelta = 100;
+#else
+        const uint16_t kMinDelta = 500;
+#endif
+        if (calData[1] < kMinDelta || calData[1] > 4096 || calData[3] < kMinDelta || calData[3] > 4096) {
             Serial.printf("DEBUG: Corrupt touch calibration detected [%u, %u, %u, %u, %u], deleting...\n",
                           calData[0], calData[1], calData[2], calData[3], calData[4]);
             LittleFS.remove("/touch_cal_p.bin");
@@ -352,22 +414,67 @@ bool FileSystem::copyFile(const char* srcPath, const char* dstPath) {
     fs::FS* dstFS = getTargetFS(dstPath, dstRel);
     if (!dstFS) return false;
 
+    // Anti-Self-Copy Guard preventing accidental file destruction
+    if (srcFS == dstFS && srcRel == dstRel) {
+        Serial.println("[FS] copyFile: Source and destination are identical! Aborting.");
+        return false;
+    }
+
+    // Validate LittleFS path limits if destination is LittleFS
+    if (dstFS == &LittleFS && !validatePathComponents(dstRel.c_str(), 31)) {
+        Serial.println("[FS] copyFile: Destination component exceeds LittleFS limit (31 chars)");
+        return false;
+    }
+
+    FSLockGuard lock;
     File srcFile = srcFS->open(srcRel.c_str(), FILE_READ);
     if (!srcFile || srcFile.isDirectory()) return false;
     
+    // Ensure destination parent directory exists
+    ensureParentDir(dstFS, dstRel);
+
     File dstFile = dstFS->open(dstRel.c_str(), FILE_WRITE);
     if (!dstFile) {
         srcFile.close();
         return false;
     }
     
-    size_t n;
-    uint8_t buf[512];
-    while ((n = srcFile.read(buf, sizeof(buf))) > 0) {
-        dstFile.write(buf, n);
+    // Allocate 4 KB buffer from Heap/PSRAM to prevent task stack canary overflow
+    const size_t BUF_SIZE = 4096;
+    uint8_t* buf = (uint8_t*)malloc(BUF_SIZE);
+    size_t actualBufSize = BUF_SIZE;
+    if (!buf) {
+        buf = (uint8_t*)malloc(512);
+        actualBufSize = 512;
+        if (!buf) {
+            srcFile.close();
+            dstFile.close();
+            return false;
+        }
     }
-    
+
+    size_t n = 0;
+    bool writeError = false;
+    while ((n = srcFile.read(buf, actualBufSize)) > 0) {
+        size_t written = dstFile.write(buf, n);
+        if (written != n) {
+            Serial.println("[FS] copyFile: Disk full (ENOSPC) during stream! Rolling back.");
+            writeError = true;
+            break;
+        }
+        yield();
+    }
+
+    free(buf);
     srcFile.close();
+
+    if (writeError) {
+        dstFile.close();
+        dstFS->remove(dstRel.c_str()); // Purge corrupt partial file
+        return false;
+    }
+
+    dstFile.flush(); // Flush FAT sector cache to physical SD card
     dstFile.close();
     return true;
 }
@@ -483,10 +590,78 @@ bool FileSystem::mkdir(const char* path) {
     return targetFS->mkdir(relPath.c_str());
 }
 
-bool FileSystem::rmdir(const char* path) {
+bool FileSystem::rmdir(const char* path, bool recursive, int depth) {
+    if (!path) return false;
+    if (depth > 6) {
+        Serial.println("[FS] rmdir: Maximum directory recursion depth (6) exceeded!");
+        return false;
+    }
+
     String relPath;
     fs::FS* targetFS = getTargetFS(path, relPath);
     if (!targetFS) return false;
+
+    // Protect system partitions and root directories
+    if (relPath.length() == 0 || relPath == "/" || relPath == "/sd" || relPath == "/local") {
+        return false;
+    }
+
+    FSLockGuard lock;
+    if (!recursive) {
+        return targetFS->rmdir(relPath.c_str());
+    }
+
+    File dir = targetFS->open(relPath.c_str());
+    if (!dir || !dir.isDirectory()) {
+        if (dir) dir.close();
+        return false;
+    }
+
+    // Phase 1: Snapshot collection (filtering . and ..)
+    std::vector<String> filesToDelete;
+    std::vector<String> dirsToRecurse;
+
+    File child = dir.openNextFile();
+    while (child) {
+        String name = child.name();
+        if (name.lastIndexOf('/') >= 0) {
+            name = name.substring(name.lastIndexOf('/') + 1);
+        }
+
+        // Filter out FAT32 "." and ".." links
+        if (name.length() == 0 || name == "." || name == "..") {
+            child.close();
+            child = dir.openNextFile();
+            continue;
+        }
+
+        String fullChildRel = relPath;
+        if (!fullChildRel.endsWith("/")) fullChildRel += "/";
+        fullChildRel += name;
+
+        if (child.isDirectory()) {
+            dirsToRecurse.push_back(fullChildRel);
+        } else {
+            filesToDelete.push_back(fullChildRel);
+        }
+        child.close(); // Prevent file descriptor pool exhaustion
+        child = dir.openNextFile();
+    }
+    dir.close(); // Close parent handle before any filesystem mutations
+
+    // Phase 2: Execute file removals with TWDT feed
+    for (size_t i = 0; i < filesToDelete.size(); i++) {
+        targetFS->remove(filesToDelete[i].c_str());
+        yield();
+    }
+
+    // Phase 3: Recurse into subdirectories with TWDT feed
+    for (size_t i = 0; i < dirsToRecurse.size(); i++) {
+        String fullSub = (targetFS == &SD) ? ("/sd" + dirsToRecurse[i]) : ("/local" + dirsToRecurse[i]);
+        rmdir(fullSub.c_str(), true, depth + 1);
+        yield();
+    }
+
     return targetFS->rmdir(relPath.c_str());
 }
 
@@ -557,7 +732,12 @@ time_t FileSystem::getLastModified(const char* path) {
 }
 
 size_t FileSystem::getTotalSpace(const char* drive) {
-    if (strncmp(drive, "/sd", 3) == 0) return sdMounted ? SD.totalBytes() : 0;
+    if (strncmp(drive, "/sd", 3) == 0) {
+        if (!sdMounted) return 0;
+        size_t total = SD.totalBytes();
+        if (total == 0) total = (size_t)SD.cardSize();
+        return total;
+    }
     if (strncmp(drive, "/local", 6) == 0) return LittleFS.totalBytes();
     return 0;
 }
@@ -606,7 +786,7 @@ String FileSystem::getFileMD5(const char* path) {
 }
 
 bool FileSystem::mountSD() {
-#if defined(CONFIG_IDF_TARGET_ESP32S3)
+#if defined(CONFIG_IDF_TARGET_ESP32S3) && !defined(TARGET_T_DECK)
     pinMode(42, OUTPUT);
     digitalWrite(42, HIGH);
     pinMode(39, INPUT_PULLUP);
@@ -627,7 +807,7 @@ bool FileSystem::mountSD() {
     sdMounted = (SD.begin(42, *sdSPI, 4000000, "/sd", 5, false) || 
                  SD.begin(42, *sdSPI, 1000000, "/sd", 5, false) || 
                  SD.begin(42, *sdSPI, 400000, "/sd", 5, false));
-#elif defined(TARGET_CYD)
+#elif defined(TARGET_CYD) || defined(TARGET_T_DECK)
     sdMounted = (initSD() != nullptr);
 #else
     if (!sdSPI) return false;

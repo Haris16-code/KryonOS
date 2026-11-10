@@ -1,4 +1,5 @@
 #include "TouchDriver.h"
+#include "../Hal/Boards/Board.h"
 
 TFT_eSPI *TouchDriver::tftInstance = nullptr;
 uint16_t TouchDriver::calData[5] = {0, 0, 0, 0, 0};
@@ -72,6 +73,8 @@ void TouchDriver::init(TFT_eSPI *tft) {
 #if defined(T_IRQ_PIN) && (T_IRQ_PIN >= 0)
     pinMode(T_IRQ_PIN, INPUT_PULLUP);
 #endif
+#elif defined(TARGET_T_DECK)
+    ::initTouch();
 #elif defined(TOUCH_CS)
     if (TOUCH_CS >= 0) {
         pinMode(TOUCH_CS, OUTPUT);
@@ -111,6 +114,8 @@ bool TouchDriver::getTouchRaw(uint16_t *x, uint16_t *y) {
         return false;
     }
     return true;
+#elif defined(TARGET_T_DECK)
+    return ::getTouchRaw(x, y);
 #elif defined(TOUCH_CS)
     if (!tftInstance) return false;
     return tftInstance->getTouchRaw(x, y);
@@ -120,7 +125,11 @@ bool TouchDriver::getTouchRaw(uint16_t *x, uint16_t *y) {
 }
 
 bool TouchDriver::getTouch(uint16_t *x, uint16_t *y, uint16_t threshold) {
-#if defined(T_CLK_PIN) && defined(T_DIN_PIN) && defined(T_DO_PIN) && defined(T_CS_PIN)
+#if defined(TARGET_T_DECK)
+    // T-Deck Plus uses factory-calibrated Goodix GT911 capacitive touch.
+    // Fixed hardware coordinate mapping handles upright orientation.
+    return ::getTouch(x, y);
+#elif defined(T_CLK_PIN) && defined(T_DIN_PIN) && defined(T_DO_PIN) && defined(T_CS_PIN)
     uint16_t rawX = 0, rawY = 0;
     if (!getTouchRaw(&rawX, &rawY)) {
         return false;
@@ -131,6 +140,8 @@ bool TouchDriver::getTouch(uint16_t *x, uint16_t *y, uint16_t threshold) {
         *y = constrain(map(rawY, 300, 3800, 0, 320), 0, 319);
         return true;
     }
+#endif
+#if defined(T_CLK_PIN) && defined(T_DIN_PIN) && defined(T_DO_PIN) && defined(T_CS_PIN)
 
     uint16_t x0 = calData[0];
     uint16_t x1 = calData[1];
@@ -142,19 +153,22 @@ bool TouchDriver::getTouch(uint16_t *x, uint16_t *y, uint16_t threshold) {
     bool invert_x = flags & 0x02;
     bool invert_y = flags & 0x04;
 
+    int16_t _dispW = tftInstance ? tftInstance->width() : 320;
+    int16_t _dispH = tftInstance ? tftInstance->height() : 240;
+
     int32_t xx, yy;
     if (!rotate) {
-        xx = (int32_t)((int32_t)(rawX - x0) * 240) / (int32_t)x1;
-        yy = (int32_t)((int32_t)(rawY - y0) * 320) / (int32_t)y1;
+        xx = (int32_t)((int32_t)(rawX - x0) * _dispW) / (int32_t)x1;
+        yy = (int32_t)((int32_t)(rawY - y0) * _dispH) / (int32_t)y1;
     } else {
-        xx = (int32_t)((int32_t)(rawY - x0) * 240) / (int32_t)x1;
-        yy = (int32_t)((int32_t)(rawX - y0) * 320) / (int32_t)y1;
+        xx = (int32_t)((int32_t)(rawY - x0) * _dispW) / (int32_t)x1;
+        yy = (int32_t)((int32_t)(rawX - y0) * _dispH) / (int32_t)y1;
     }
 
-    if (invert_x) xx = 240 - xx;
-    if (invert_y) yy = 320 - yy;
+    if (invert_x) xx = _dispW - xx;
+    if (invert_y) yy = _dispH - yy;
 
-    if (xx < 0 || xx >= 240 || yy < 0 || yy >= 320) {
+    if (xx < 0 || xx >= _dispW || yy < 0 || yy >= _dispH) {
         return false;
     }
 
@@ -185,58 +199,71 @@ void TouchDriver::setTouch(uint16_t *parameters) {
 
 static void drawCornerArrow(TFT_eSPI *tft, uint8_t corner, uint8_t size, uint32_t color, int16_t width, int16_t height) {
     if (!tft) return;
-    switch (corner) {
-        case 0: // Top-Left
-            tft->drawLine(0, 0, 0, size, color);
-            tft->drawLine(0, 0, size, 0, color);
-            tft->drawLine(0, 0, size, size, color);
-            break;
-        case 1: // Bottom-Left
-            tft->drawLine(0, height - size - 1, 0, height - 1, color);
-            tft->drawLine(0, height - 1, size, height - 1, color);
-            tft->drawLine(size, height - size - 1, 0, height - 1, color);
-            break;
-        case 2: // Top-Right
-            tft->drawLine(width - size - 1, 0, width - 1, 0, color);
-            tft->drawLine(width - size - 1, size, width - 1, 0, color);
-            tft->drawLine(width - 1, size, width - 1, 0, color);
-            break;
-        case 3: // Bottom-Right
-            tft->drawLine(width - size - 1, height - size - 1, width - 1, height - 1, color);
-            tft->drawLine(width - 1, height - 1 - size, width - 1, height - 1, color);
-            tft->drawLine(width - 1 - size, height - 1, width - 1, height - 1, color);
-            break;
+    for (int8_t o = 0; o <= 2; o++) {
+        switch (corner) {
+            case 0: // Top-Left
+                tft->drawLine(o, 0, o, size, color);
+                tft->drawLine(0, o, size, o, color);
+                tft->drawLine(o, 0, size, size - o, color);
+                break;
+            case 1: // Bottom-Left
+                tft->drawLine(o, height - size - 1, o, height - 1, color);
+                tft->drawLine(0, height - 1 - o, size, height - 1 - o, color);
+                tft->drawLine(size, height - size - 1 + o, o, height - 1, color);
+                break;
+            case 2: // Top-Right
+                tft->drawLine(width - 1 - o, 0, width - 1 - o, size, color);
+                tft->drawLine(width - size - 1, o, width - 1, o, color);
+                tft->drawLine(width - 1 - size + o, size, width - 1 - o, 0, color);
+                break;
+            case 3: // Bottom-Right
+                tft->drawLine(width - 1 - o, height - size - 1, width - 1 - o, height - 1, color);
+                tft->drawLine(width - size - 1, height - 1 - o, width - 1, height - 1 - o, color);
+                tft->drawLine(width - 1 - size + o, height - 1 - size, width - 1 - o, height - 1, color);
+                break;
+        }
     }
 }
 
 void TouchDriver::calibrateTouch(uint16_t *parameters, uint32_t color_fg, uint32_t color_bg, uint8_t size) {
-#if defined(T_CLK_PIN) && defined(T_DIN_PIN) && defined(T_DO_PIN) && defined(T_CS_PIN)
+#if (defined(T_CLK_PIN) && defined(T_DIN_PIN) && defined(T_DO_PIN) && defined(T_CS_PIN)) || defined(TARGET_T_DECK)
     if (!tftInstance) return;
 
+    int16_t _width = tftInstance->width();
+    int16_t _height = tftInstance->height();
+    int16_t cx = _width / 2;
+    int16_t cy = _height / 2;
+
+    Serial.printf("[TouchCal] Starting calibration screen (%dx%d)...\n", _width, _height);
+
     tftInstance->fillScreen(color_bg);
-    tftInstance->setTextColor(color_fg, color_bg);
+    tftInstance->setTextDatum(TC_DATUM);
+    tftInstance->setTextColor(TFT_WHITE, color_bg);
+    tftInstance->drawString("Touch Calibration", cx, 25, 4);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Touch the arrows", 120, 160, 2);
+    tftInstance->setTextColor(color_fg, color_bg);
+    tftInstance->drawString("Touch the red corner arrows", cx, cy, 2);
 
     int16_t values[] = {0, 0, 0, 0, 0, 0, 0, 0};
     uint16_t x_tmp, y_tmp;
-    int16_t _width = tftInstance->width();
-    int16_t _height = tftInstance->height();
 
     for (uint8_t i = 0; i < 4; i++) {
         // Clear all 4 arrow positions
-        tftInstance->fillRect(0, 0, size + 1, size + 1, color_bg);
-        tftInstance->fillRect(0, _height - size - 1, size + 1, size + 1, color_bg);
-        tftInstance->fillRect(_width - size - 1, 0, size + 1, size + 1, color_bg);
-        tftInstance->fillRect(_width - size - 1, _height - size - 1, size + 1, size + 1, color_bg);
+        tftInstance->fillRect(0, 0, size + 4, size + 4, color_bg);
+        tftInstance->fillRect(0, _height - size - 4, size + 4, size + 4, color_bg);
+        tftInstance->fillRect(_width - size - 4, 0, size + 4, size + 4, color_bg);
+        tftInstance->fillRect(_width - size - 4, _height - size - 4, size + 4, size + 4, color_bg);
 
         // Draw active arrow in RED (color_fg)
         drawCornerArrow(tftInstance, i, size, color_fg, _width, _height);
+        Serial.printf("[TouchCal] Corner %u/4: Waiting for touch...\n", i + 1);
 
         // Wait for user to touch the arrow
         while (!getTouchRaw(&x_tmp, &y_tmp)) {
             delay(10);
         }
+
+        Serial.printf("[TouchCal] Corner %u/4: Pressed at raw (%u, %u)\n", i + 1, x_tmp, y_tmp);
 
         // Visual feedback: change arrow color to GREEN while pressed!
         drawCornerArrow(tftInstance, i, size, TFT_GREEN, _width, _height);
@@ -257,12 +284,13 @@ void TouchDriver::calibrateTouch(uint16_t *parameters, uint32_t color_fg, uint32
         while (getTouchRaw(&x_tmp, &y_tmp)) {
             delay(10);
         }
+        Serial.printf("[TouchCal] Corner %u/4: Released. Sample: (%d, %d)\n", i + 1, values[i * 2], values[i * 2 + 1]);
 
         // Clear arrow area
-        tftInstance->fillRect(0, 0, size + 1, size + 1, color_bg);
-        tftInstance->fillRect(0, _height - size - 1, size + 1, size + 1, color_bg);
-        tftInstance->fillRect(_width - size - 1, 0, size + 1, size + 1, color_bg);
-        tftInstance->fillRect(_width - size - 1, _height - size - 1, size + 1, size + 1, color_bg);
+        tftInstance->fillRect(0, 0, size + 4, size + 4, color_bg);
+        tftInstance->fillRect(0, _height - size - 4, size + 4, size + 4, color_bg);
+        tftInstance->fillRect(_width - size - 4, 0, size + 4, size + 4, color_bg);
+        tftInstance->fillRect(_width - size - 4, _height - size - 4, size + 4, size + 4, color_bg);
 
         delay(300); // Debounce between corners
     }
@@ -312,6 +340,9 @@ void TouchDriver::calibrateTouch(uint16_t *parameters, uint32_t color_fg, uint32
     parameters[2] = y0;
     parameters[3] = y1;
     parameters[4] = (rotate ? 1 : 0) | (invert_x ? 2 : 0) | (invert_y ? 4 : 0);
+
+    Serial.printf("[TouchCal] Calibration computed: [%u, %u, %u, %u, %u] (rot=%d, invX=%d, invY=%d)\n",
+                  x0, x1, y0, y1, parameters[4], rotate ? 1 : 0, invert_x ? 1 : 0, invert_y ? 1 : 0);
 
     setTouch(parameters);
 #elif defined(TOUCH_CS)

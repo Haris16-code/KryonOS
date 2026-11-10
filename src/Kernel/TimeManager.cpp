@@ -6,16 +6,23 @@ String TimeManager::currentTimezone = "UTC0";
 bool TimeManager::use24hFormat = true;
 bool TimeManager::ntpEnabled = true;
 
-static const char* PREF_FILE = "/local/config_time.txt";
+static const char* PREF_FILE_SYS = "/local/system/config_time.txt";
+static const char* PREF_FILE_LEGACY = "/local/config_time.txt";
 
 void TimeManager::loadPreferences() {
-    if (FileSystem::exists(PREF_FILE)) {
-        String content = FileSystem::readTextFile(PREF_FILE);
+    const char* prefFile = FileSystem::exists(PREF_FILE_SYS) ? PREF_FILE_SYS : PREF_FILE_LEGACY;
+    if (FileSystem::exists(prefFile)) {
+        String content = FileSystem::readTextFile(prefFile);
+        content.trim();
         // Format: TZ|24H|NTP (e.g. "UTC-5|1|1")
         int sep1 = content.indexOf('|');
         int sep2 = content.indexOf('|', sep1 + 1);
         if (sep1 != -1 && sep2 != -1) {
-            currentTimezone = content.substring(0, sep1);
+            String tz = content.substring(0, sep1);
+            tz.trim();
+            if (tz.length() > 0) {
+                currentTimezone = tz;
+            }
             use24hFormat = (content.substring(sep1 + 1, sep2) == "1");
             ntpEnabled = (content.substring(sep2 + 1) == "1");
         }
@@ -23,8 +30,11 @@ void TimeManager::loadPreferences() {
 }
 
 void TimeManager::savePreferences() {
+    if (!FileSystem::exists("/local/system")) {
+        FileSystem::mkdir("/local/system");
+    }
     String content = currentTimezone + "|" + (use24hFormat ? "1" : "0") + "|" + (ntpEnabled ? "1" : "0");
-    FileSystem::writeTextFile(PREF_FILE, content.c_str());
+    FileSystem::writeTextFile(PREF_FILE_SYS, content.c_str());
 }
 
 time_t TimeManager::getBuildEpoch() {
@@ -67,6 +77,10 @@ void TimeManager::syncNTP() {
     if (!ntpEnabled) return;
     // Configure and start SNTP non-blocking
     configTime(0, 0, "pool.ntp.org", "time.google.com", "time.nist.gov");
+    // CRITICAL: Arduino-ESP32's configTime(0, 0, ...) resets "TZ" environment
+    // variable to "UTC" (UTC0). Re-apply user's persisted timezone immediately!
+    setenv("TZ", currentTimezone.c_str(), 1);
+    tzset();
 }
 
 void TimeManager::setManualTime(int year, int month, int day, int hour, int minute) {

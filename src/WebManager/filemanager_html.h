@@ -1061,10 +1061,10 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
                         sdBadge.className = 'storage-badge badge-mounted';
                         sdBadge.innerText = 'Mounted';
                         sdCard.classList.remove('disabled');
-                        const total = data.sd.total || 1;
+                        const total = (data.sd.total && data.sd.total > 0) ? data.sd.total : (data.sd.cardSize || 0);
                         const used = data.sd.used || 0;
-                        const pct = Math.min(100, Math.round((used / total) * 100));
-                        document.getElementById('sd-used-text').innerText = `${formatBytes(used)} / ${formatBytes(total)}`;
+                        const pct = total > 0 ? Math.min(100, Math.round((used / total) * 100)) : 0;
+                        document.getElementById('sd-used-text').innerText = total > 0 ? `${formatBytes(used)} / ${formatBytes(total)}` : `${formatBytes(used)} / Unknown`;
                         document.getElementById('sd-pct-text').innerText = `${pct}%`;
                         document.getElementById('sd-bar').style.width = `${pct}%`;
                     } else {
@@ -1136,7 +1136,11 @@ const char filemanager_html[] PROGMEM = R"rawliteral(
 
         // --- Directory Navigation ---
         async function loadDirectory() {
-            const targetUrl = `/api/list?dir=${encodeURIComponent(currentStorage + currentPath)}`.replace(/\/+/g, '/');
+            let reqDir = (currentStorage + currentPath).replace(/\/+/g, '/');
+            while (reqDir.length > 1 && reqDir.endsWith('/')) {
+                reqDir = reqDir.substring(0, reqDir.length - 1);
+            }
+            const targetUrl = `/api/list?dir=${encodeURIComponent(reqDir)}`;
             updateBreadcrumbs();
             
             const tbody = document.getElementById('file-list-body');

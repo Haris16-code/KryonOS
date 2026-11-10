@@ -10,11 +10,10 @@ on:
         default: 'all'
         options:
           - 'all'
+          - 'lilygo-t-deck'
           - 'esp32-s3-devkitc-1-n16r8'
           - 'm5stack-cardputer'
           - 'lilygo-t-hmi'
-          - 'esp32-cyd-28'
-          - 'esp32doit-devkit-v1'
 
       update_type:
         description: 'Update Type'
@@ -57,6 +56,12 @@ on:
         type: string
         default: 'Flash via Web Flasher:\nkryonos.harislab.tech/flasher'
 
+      ota_t_deck:
+        description: '[OTA Toggle] Enable OTA for lilygo-t-deck?'
+        required: true
+        type: boolean
+        default: true
+
       ota_s3_devkit:
         description: '[OTA Toggle] Enable OTA for esp32-s3-devkitc-1-n16r8?'
         required: true
@@ -74,18 +79,6 @@ on:
         required: true
         type: boolean
         default: true
-
-      ota_cyd_28:
-        description: '[OTA Toggle] Enable OTA for esp32-cyd-28?'
-        required: true
-        type: boolean
-        default: true
-
-      ota_devkit_v1:
-        description: '[OTA Toggle] Enable OTA for esp32doit-devkit-v1?'
-        required: true
-        type: boolean
-        default: false
 
 permissions:
   contents: write
@@ -118,11 +111,10 @@ jobs:
           API_LEVEL_IN: ${{ inputs.api_level_override }}
           RELEASE_TAG_IN: ${{ inputs.release_tag }}
           UNSUPPORTED_GUIDE: ${{ inputs.unsupported_ota_guide }}
+          OTA_TDECK: ${{ inputs.ota_t_deck }}
           OTA_S3: ${{ inputs.ota_s3_devkit }}
           OTA_CARDPUTER: ${{ inputs.ota_cardputer }}
           OTA_THMI: ${{ inputs.ota_t_hmi }}
-          OTA_CYD: ${{ inputs.ota_cyd_28 }}
-          OTA_DEVKIT: ${{ inputs.ota_devkit_v1 }}
         run: |
           set -euo pipefail
 
@@ -195,11 +187,10 @@ jobs:
           print(f"Resolved Changelog:\n{changelog}")
 
           ota_flags = {
+              "lilygo-t-deck": os.environ["OTA_TDECK"].lower() == "true",
               "esp32-s3-devkitc-1-n16r8": os.environ["OTA_S3"].lower() == "true",
               "m5stack-cardputer": os.environ["OTA_CARDPUTER"].lower() == "true",
               "lilygo-t-hmi": os.environ["OTA_THMI"].lower() == "true",
-              "esp32-cyd-28": os.environ["OTA_CYD"].lower() == "true",
-              "esp32doit-devkit-v1": os.environ["OTA_DEVKIT"].lower() == "true",
           }
 
           manifest_path = Path("updates/esp32/v2/update.json")
@@ -232,11 +223,10 @@ jobs:
               data["release"]["changelog"] = changelog
 
           all_boards = [
+              "lilygo-t-deck",
               "esp32-s3-devkitc-1-n16r8",
               "m5stack-cardputer",
-              "lilygo-t-hmi",
-              "esp32-cyd-28",
-              "esp32doit-devkit-v1"
+              "lilygo-t-hmi"
           ]
 
           boards_to_process = all_boards if target_board == "all" else [target_board]

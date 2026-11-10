@@ -7,7 +7,10 @@
 #include <mbedtls/pk.h>
 #include <mbedtls/rsa.h>
 #include <mbedtls/base64.h>
+#include <mbedtls/pkcs5.h>
 #include <esp_random.h>
+#include <esp_mac.h>
+#include <esp_task_wdt.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 
@@ -267,16 +270,53 @@ bool CryptoEngine::rsaVerify(const String& pubKeyPem, const String& message, con
 }
 
 bool CryptoEngine::getDeviceKey(uint8_t keyOut[32]) {
+    if (!keyOut) return false;
+
+    // Deterministic Hardware Silicon Identity:
+    // Derives root key directly from immutable hardware registers burned into wafer eFuses at factory.
+    // Survives full flash erasure (esptool.py erase_flash) while guaranteeing device uniqueness.
+    struct __attribute__((packed)) {
+        uint8_t factoryMac[6];
+        uint8_t staMac[6];
+        uint8_t btMac[6];
+        uint64_t efuseMac;
+        uint8_t chipRev;
+        uint8_t chipCores;
+        char chipModel[16];
+        char domain[36];
+    } hwIdentity;
+
+    memset(&hwIdentity, 0, sizeof(hwIdentity));
+    esp_efuse_mac_get_default(hwIdentity.factoryMac);
+    esp_read_mac(hwIdentity.staMac, ESP_MAC_WIFI_STA);
+    esp_read_mac(hwIdentity.btMac, ESP_MAC_BT);
+    hwIdentity.efuseMac = ESP.getEfuseMac();
+    hwIdentity.chipRev = (uint8_t)ESP.getChipRevision();
+    hwIdentity.chipCores = (uint8_t)ESP.getChipCores();
+
+    const char* model = ESP.getChipModel();
+    if (model) {
+        strncpy(hwIdentity.chipModel, model, sizeof(hwIdentity.chipModel) - 1);
+    }
+    strncpy(hwIdentity.domain, "KryonOS-Silicon-Hardware-Root-v1", sizeof(hwIdentity.domain) - 1);
+
+    static const uint8_t KRYON_HW_DOMAIN_SALT[] = "KRYON_OS_DISASTER_RECOVERY_ROOT_SALT_V1";
+    hmacSha256Raw(KRYON_HW_DOMAIN_SALT, sizeof(KRYON_HW_DOMAIN_SALT) - 1,
+                  (const uint8_t*)&hwIdentity, sizeof(hwIdentity),
+                  keyOut);
+
+    return true;
+}
+
+bool CryptoEngine::getLegacyNVSKey(uint8_t keyOut[32]) {
+    if (!keyOut) return false;
     Preferences prefs;
-    if (!prefs.begin("kryon_sec", false)) {
-        Serial.println("[Crypto] Error opening NVS kryon_sec namespace");
+    if (!prefs.begin("kryon_sec", true)) { // Read-only
         return false;
     }
     if (!prefs.isKey("enc_key")) {
-        uint8_t rawKey[32];
-        esp_fill_random(rawKey, sizeof(rawKey));
-        prefs.putBytes("enc_key", rawKey, sizeof(rawKey));
-        Serial.println("[Crypto] Generated new device encryption key via hardware TRNG");
+        prefs.end();
+        return false;
     }
     size_t len = prefs.getBytes("enc_key", keyOut, 32);
     prefs.end();
@@ -318,10 +358,24 @@ String CryptoEngine::deviceDecrypt(const String& ciphertext) {
     if (!ivHex || !dataBase64) return "";
 
     uint8_t key[32];
-    if (!getDeviceKey(key)) return "";
+    if (getDeviceKey(key)) {
+        String keyHex = bytesToHex(key, 32);
+        String decrypted = aesDecrypt(String(dataBase64), keyHex, String(ivHex));
+        if (decrypted.length() > 0) {
+            return decrypted;
+        }
+    }
 
-    String keyHex = bytesToHex(key, 32);
-    return aesDecrypt(String(dataBase64), keyHex, String(ivHex));
+    // Fallback to legacy NVS key if present
+    if (getLegacyNVSKey(key)) {
+        String keyHex = bytesToHex(key, 32);
+        String decrypted = aesDecrypt(String(dataBase64), keyHex, String(ivHex));
+        if (decrypted.length() > 0) {
+            return decrypted;
+        }
+    }
+
+    return "";
 }
 
 String CryptoEngine::sha256File(const char* path) {
@@ -348,5 +402,113 @@ String CryptoEngine::sha256File(const char* path) {
     mbedtls_sha256_free(&shaCtx);
 
     return bytesToHex(hash, 32);
+}
+
+void CryptoEngine::hmacSha256Raw(const uint8_t* key, size_t keyLen, const uint8_t* msg, size_t msgLen, uint8_t outHmac[32]) {
+    mbedtls_md_context_t mdCtx;
+    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    mbedtls_md_init(&mdCtx);
+    if (mbedtls_md_setup(&mdCtx, mdInfo, 1) == 0) {
+        mbedtls_md_hmac_starts(&mdCtx, key, keyLen);
+        if (msg && msgLen > 0) {
+            mbedtls_md_hmac_update(&mdCtx, msg, msgLen);
+        }
+        mbedtls_md_hmac_finish(&mdCtx, outHmac);
+    } else {
+        memset(outHmac, 0, 32);
+    }
+    mbedtls_md_free(&mdCtx);
+}
+
+void CryptoEngine::sha256Raw(const uint8_t* msg, size_t msgLen, uint8_t outHash[32]) {
+    mbedtls_sha256_context shaCtx;
+    mbedtls_sha256_init(&shaCtx);
+    mbedtls_sha256_starts(&shaCtx, 0);
+    if (msg && msgLen > 0) {
+        mbedtls_sha256_update(&shaCtx, msg, msgLen);
+    }
+    mbedtls_sha256_finish(&shaCtx, outHash);
+    mbedtls_sha256_free(&shaCtx);
+}
+
+bool CryptoEngine::pbkdf2HmacSha256(const String& passphrase, const uint8_t* salt, size_t saltLen, uint32_t iterations, uint8_t outKey[32]) {
+    if (passphrase.length() == 0 || !salt || saltLen == 0 || iterations == 0) return false;
+    
+    mbedtls_md_context_t mdCtx;
+    const mbedtls_md_info_t* mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
+    mbedtls_md_init(&mdCtx);
+    if (mbedtls_md_setup(&mdCtx, mdInfo, 1) != 0) {
+        mbedtls_md_free(&mdCtx);
+        return false;
+    }
+    
+    esp_task_wdt_reset();
+    int ret = mbedtls_pkcs5_pbkdf2_hmac(&mdCtx, 
+                                        (const unsigned char*)passphrase.c_str(), passphrase.length(),
+                                        salt, saltLen, 
+                                        iterations, 32, outKey);
+    esp_task_wdt_reset();
+    mbedtls_md_free(&mdCtx);
+    return (ret == 0);
+}
+
+void CryptoEngine::deriveBackupSubkeys(const uint8_t masterKey[32], uint8_t encKey[32], uint8_t macKey[32]) {
+    const char* encSalt = "KRYON_BKP_ENC_KEY_v1";
+    const char* macSalt = "KRYON_BKP_MAC_KEY_v1";
+    hmacSha256Raw(masterKey, 32, (const uint8_t*)encSalt, strlen(encSalt), encKey);
+    hmacSha256Raw(masterKey, 32, (const uint8_t*)macSalt, strlen(macSalt), macKey);
+}
+
+bool CryptoEngine::aesCbcEncryptRaw(const uint8_t* plain, size_t plainLen, const uint8_t key[32], const uint8_t iv[16], std::vector<uint8_t>& outCipher) {
+    size_t padLen = 16 - (plainLen % 16);
+    size_t totalLen = plainLen + padLen;
+    std::vector<uint8_t> padded(totalLen);
+    if (plainLen > 0) memcpy(padded.data(), plain, plainLen);
+    memset(padded.data() + plainLen, (uint8_t)padLen, padLen);
+
+    unsigned char ivCopy[16];
+    memcpy(ivCopy, iv, 16);
+
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    if (mbedtls_aes_setkey_enc(&aes, key, 256) != 0) {
+        mbedtls_aes_free(&aes);
+        return false;
+    }
+
+    outCipher.resize(totalLen);
+    int ret = mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_ENCRYPT, totalLen, ivCopy, padded.data(), outCipher.data());
+    mbedtls_aes_free(&aes);
+    return (ret == 0);
+}
+
+bool CryptoEngine::aesCbcDecryptRaw(const uint8_t* cipher, size_t cipherLen, const uint8_t key[32], const uint8_t iv[16], std::vector<uint8_t>& outPlain) {
+    if (cipherLen == 0 || (cipherLen % 16 != 0)) return false;
+
+    unsigned char ivCopy[16];
+    memcpy(ivCopy, iv, 16);
+
+    mbedtls_aes_context aes;
+    mbedtls_aes_init(&aes);
+    if (mbedtls_aes_setkey_dec(&aes, key, 256) != 0) {
+        mbedtls_aes_free(&aes);
+        return false;
+    }
+
+    std::vector<uint8_t> plain(cipherLen);
+    int ret = mbedtls_aes_crypt_cbc(&aes, MBEDTLS_AES_DECRYPT, cipherLen, ivCopy, cipher, plain.data());
+    mbedtls_aes_free(&aes);
+    if (ret != 0) return false;
+
+    uint8_t pad = plain[cipherLen - 1];
+    if (pad == 0 || pad > 16 || pad > cipherLen) return false;
+    for (size_t i = 0; i < pad; i++) {
+        if (plain[cipherLen - 1 - i] != pad) return false;
+    }
+
+    size_t actualLen = cipherLen - pad;
+    outPlain.resize(actualLen);
+    if (actualLen > 0) memcpy(outPlain.data(), plain.data(), actualLen);
+    return true;
 }
 

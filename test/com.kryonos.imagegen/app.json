@@ -1,0 +1,11 @@
+{
+  "name": "Neural Image Studio",
+  "packageName": "com.kryonos.imagegen",
+  "version": "1.0.0",
+  "author": "KryonOS Team",
+  "description": "On-device 4.0M neural image and sprite synthesis studio with 18-class conditional control, latent vector sliders, and real-time RGB565 DMA blitting.",
+  "type": "Utility",
+  "category": "Artificial Intelligence",
+  "api": 3,
+  "main": "main.js"
+}

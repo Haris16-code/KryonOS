@@ -1,14 +1,18 @@
 #include "AppStoreUI.h"
 #include "../FileSystem/FileSystem.h"
 #include "../Hal/Crypto/CryptoEngine.h"
+#include "../Hal/Bluetooth/BluetoothEngine.h"
 #include "../Kernel/Services/Network/TLSHelper.h"
+#include "../Kernel/WiFiManager.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 #include <SD.h>
+#include <esp_task_wdt.h>
 #include "InstallerUI.h"
+#include "../Hal/Boards/Board.h"
 
 extern int currentState;
 
@@ -69,101 +73,153 @@ void AppStoreUI::draw() {
 // Network Fetching
 // ============================================================
 bool AppStoreUI::downloadFile(const String& url, const String& destPath, const String& loadingMsg) {
-    if (WiFi.status() != WL_CONNECTED) {
+    if (!WiFiManager::isConnected() || WiFi.localIP() == IPAddress(0, 0, 0, 0)) {
         dialogMessage = "Please turn on WiFi first\nto access the app store.";
         return false;
     }
-    
-    HTTPClient http;
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.setTimeout(15000);
-    http.setReuse(false);
-    http.setUserAgent(String("KryonOS/") + KRYONOS_VERSION);
 
-    WiFiClientSecure secureClient;
-    WiFiClient plainClient;
-
-    if (url.startsWith("https://")) {
-        TLSHelper::configureTLS(secureClient, url);
-        if (!http.begin(secureClient, url)) {
-            dialogMessage = "SSL Connect Failed";
-            return false;
-        }
-    } else {
-        if (!http.begin(plainClient, url)) {
-            dialogMessage = "HTTP Connect Failed";
-            return false;
-        }
+    // Reclaim ~65KB of internal SRAM if Bluetooth is running so TLS handshake never fails
+    if (BluetoothEngine::isEnabled()) {
+        BluetoothEngine::disable();
     }
-    
+
+    // Keep WiFi active during downloads
+    WiFi.setSleep(false);
+
     // Draw initial progress UI
+    int sw = tftInstance->width();
+    int sh = tftInstance->height();
+    int barW = min(220, sw - 48);
+    int barH = 20;
+    int barX = (sw - barW) / 2;
+    int barY = (sh / 2) + 10;
+    int msgY = barY - 24;
+
     tftInstance->fillScreen(TFT_BLACK);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(loadingMsg, 120, 140, 2);
-    tftInstance->drawRect(30, 160, 180, 20, TFT_WHITE);
-    
-    int httpCode = http.GET();
-    if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
-        int totalLen = http.getSize();
-        int downloaded = 0;
-        
-        WiFiClient *stream = http.getStreamPtr();
-        fs::FS* targetFS = &LittleFS;
-        String relPath = destPath;
-        if (destPath.startsWith("/sd/")) {
-            targetFS = &SD;
-            relPath = destPath.substring(3);
-        } else if (destPath.startsWith("/local/")) {
-            targetFS = &LittleFS;
-            relPath = destPath.substring(6);
+    tftInstance->drawString(loadingMsg, sw / 2, msgY, 2);
+    tftInstance->drawRect(barX, barY, barW, barH, TFT_WHITE);
+
+    // Pre-flight DNS resolution with retry to ensure host resolves before TLS handshake
+    String host = TLSHelper::extractHost(url);
+    IPAddress resolvedIP;
+    bool dnsResolved = false;
+    for (int d = 0; d < 3; d++) {
+        if (WiFi.hostByName(host.c_str(), resolvedIP)) {
+            dnsResolved = true;
+            break;
         }
-        
-        // Ensure parent directory exists before writing
-        int lastSlash = relPath.lastIndexOf('/');
-        if (lastSlash > 0) {
-            String parentDir = relPath.substring(0, lastSlash);
-            if (!targetFS->exists(parentDir.c_str())) {
-                targetFS->mkdir(parentDir.c_str());
-            }
-        }
-        
-        File file = targetFS->open(relPath, FILE_WRITE);
-        if (!file) {
-            dialogMessage = "Error: FS Write " + String(relPath);
-            http.end();
-            return false;
-        }
-        
-        uint8_t buff[512] = { 0 };
-        int len;
-        
-        while (http.connected() && (totalLen == -1 || downloaded < totalLen)) {
-            size_t size = stream->available();
-            if (size) {
-                int readLen = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
-                if (readLen > 0) {
-                    file.write(buff, readLen);
-                    downloaded += readLen;
-                    
-                    // Update Progress Bar
-                    if (totalLen > 0) {
-                        int progressWidth = map(downloaded, 0, totalLen, 0, 176);
-                        tftInstance->fillRect(32, 162, progressWidth, 16, TFT_GREEN);
-                    }
-                }
-            } else {
-                delay(1);
-            }
-        }
-        file.close();
-        http.end();
-        return true;
-    } else {
-        dialogMessage = "Error HTTP " + String(httpCode);
-        http.end();
+        vTaskDelay(pdMS_TO_TICKS(250));
+        esp_task_wdt_reset();
+    }
+
+    if (!dnsResolved) {
+        Serial.printf("[AppStoreUI] DNS resolution failed for host: %s\n", host.c_str());
+        dialogMessage = "DNS Lookup Failed!\nCannot resolve server.";
         return false;
     }
+
+    int lastHttpCode = -1;
+    for (int attempt = 1; attempt <= 2; attempt++) {
+        HTTPClient http;
+        TLSHelper::configureHTTP(http, 30000);
+
+        WiFiClientSecure secureClient;
+        WiFiClient plainClient;
+
+        if (url.startsWith("https://")) {
+            TLSHelper::configureTLS(secureClient, url);
+            if (!http.begin(secureClient, url)) {
+                if (attempt == 2) {
+                    dialogMessage = "SSL Connect Failed";
+                    return false;
+                }
+                vTaskDelay(pdMS_TO_TICKS(300));
+                continue;
+            }
+        } else {
+            if (!http.begin(plainClient, url)) {
+                if (attempt == 2) {
+                    dialogMessage = "HTTP Connect Failed";
+                    return false;
+                }
+                vTaskDelay(pdMS_TO_TICKS(300));
+                continue;
+            }
+        }
+
+        lastHttpCode = http.GET();
+        if (lastHttpCode > 0 && lastHttpCode == HTTP_CODE_OK) {
+            int totalLen = http.getSize();
+            int downloaded = 0;
+            
+            WiFiClient *stream = http.getStreamPtr();
+            fs::FS* targetFS = &LittleFS;
+            String relPath = destPath;
+            if (destPath.startsWith("/sd/")) {
+                targetFS = &SD;
+                relPath = destPath.substring(3);
+            } else if (destPath.startsWith("/local/")) {
+                targetFS = &LittleFS;
+                relPath = destPath.substring(6);
+            }
+            
+            // Ensure parent directory exists before writing
+            int lastSlash = relPath.lastIndexOf('/');
+            if (lastSlash > 0) {
+                String parentDir = relPath.substring(0, lastSlash);
+                if (!targetFS->exists(parentDir.c_str())) {
+                    targetFS->mkdir(parentDir.c_str());
+                }
+            }
+            
+            File file = targetFS->open(relPath, FILE_WRITE);
+            if (!file) {
+                dialogMessage = "Error: FS Write " + String(relPath);
+                http.end();
+                return false;
+            }
+            
+            uint8_t buff[512] = { 0 };
+            
+            while ((http.connected() || stream->available() > 0) && (totalLen == -1 || downloaded < totalLen)) {
+                size_t size = stream->available();
+                if (size) {
+                    int readLen = stream->readBytes(buff, ((size > sizeof(buff)) ? sizeof(buff) : size));
+                    if (readLen > 0) {
+                        file.write(buff, readLen);
+                        downloaded += readLen;
+                        
+                        // Update Progress Bar
+                        if (totalLen > 0) {
+                            int innerW = barW - 4;
+                            int progressWidth = map(downloaded, 0, totalLen, 0, innerW);
+                            tftInstance->fillRect(barX + 2, barY + 2, progressWidth, barH - 4, TFT_GREEN);
+                        }
+                    }
+                } else {
+                    vTaskDelay(pdMS_TO_TICKS(1));
+                }
+                esp_task_wdt_reset();
+            }
+            file.close();
+            http.end();
+            return true;
+        } else {
+            char tlsErrBuf[128] = {0};
+            int tlsErr = secureClient.lastError(tlsErrBuf, sizeof(tlsErrBuf));
+            http.end();
+            Serial.printf("[AppStoreUI] Attempt %d failed with code %d (TLS error %d: %s)\n", 
+                          attempt, lastHttpCode, tlsErr, (tlsErr != 0 ? tlsErrBuf : "Connection Failed"));
+            if (attempt == 1) {
+                vTaskDelay(pdMS_TO_TICKS(400));
+            }
+        }
+    }
+
+    dialogMessage = "Error HTTP " + String(lastHttpCode);
+    return false;
 }
 
 bool AppStoreUI::fetchCategories() {
@@ -239,7 +295,13 @@ bool AppStoreUI::fetchCategoryApps(const String& url) {
         JsonObject appData = kv.value().as<JsonObject>();
         
         // Filter out apps that require a newer OS
-        int requiredApi = appData["api"] | 1;
+        int requiredApi = 1;
+        if (appData["api"].is<int>()) {
+            requiredApi = appData["api"].as<int>();
+        } else if (appData["api"].is<const char*>()) {
+            requiredApi = String(appData["api"].as<const char*>()).toInt();
+        }
+        if (requiredApi <= 0) requiredApi = 1;
         if (requiredApi > KRYONOS_API_LEVEL) continue;
         
         currentApps[currentAppCount].id = id;
@@ -290,6 +352,111 @@ int AppStoreUI::compareVersions(const String& v1, const String& v2) {
     return 0;
 }
 
+String AppStoreUI::deriveCategoryIndexUrl(const String& metaUrl) {
+    if (metaUrl.length() == 0) return "";
+
+    // Strategy 1: Explicit "/categories/" anchor (Case-Insensitive)
+    String metaLower = metaUrl;
+    metaLower.toLowerCase();
+    int catPos = metaLower.indexOf("/categories/");
+
+    if (catPos != -1) {
+        int catNameStart = catPos + 12; // Length of "/categories/" is 12
+        int nextSlash = metaUrl.indexOf('/', catNameStart);
+        if (nextSlash != -1) {
+            String categoryUrl = metaUrl.substring(0, nextSlash);
+            return categoryUrl + "/index.json";
+        }
+    }
+
+    // Strategy 2: Universal 2-Level Parent Traversal
+    int lastSlash = metaUrl.lastIndexOf('/');
+    if (lastSlash > 0) {
+        int secondLast = metaUrl.lastIndexOf('/', lastSlash - 1);
+        if (secondLast > 0) {
+            return metaUrl.substring(0, secondLast) + "/index.json";
+        }
+    }
+
+    return "";
+}
+
+bool AppStoreUI::resolveUpdateHashes(AppStoreItem& item, const String& pkgName, const String& metaUrl) {
+    String categoryIndexUrl = deriveCategoryIndexUrl(metaUrl.length() > 0 ? metaUrl : item.metaUrl);
+    if (categoryIndexUrl.length() == 0) return false;
+
+    // Use a cached category index file if the URL matches the last downloaded category
+    static String s_cachedCategoryUrl = "";
+    String tmpIndex = "/tmp_cat_idx.json";
+
+    bool needDownload = (s_cachedCategoryUrl != categoryIndexUrl) || !LittleFS.exists(tmpIndex);
+    if (needDownload) {
+        LittleFS.remove(tmpIndex);
+        if (!downloadFile(categoryIndexUrl, tmpIndex, "Verifying store hash...")) {
+            return false;
+        }
+        s_cachedCategoryUrl = categoryIndexUrl;
+    }
+
+    File f = LittleFS.open(tmpIndex, "r");
+    if (!f) return false;
+
+    JsonDocument doc;
+    DeserializationError err = deserializeJson(doc, f);
+    f.close();
+
+    if (err) {
+        LittleFS.remove(tmpIndex);
+        s_cachedCategoryUrl = "";
+        return false;
+    }
+
+    JsonObject apps = doc["apps"];
+    for (JsonPair kv : apps) {
+        JsonObject appData = kv.value().as<JsonObject>();
+        String entryPkg = appData["packageName"] | "";
+        String entryMeta = appData["meta"] | "";
+        String entryId = kv.key().c_str();
+
+        bool matched = false;
+        if (pkgName.length() > 0 && entryPkg.length() > 0 && entryPkg.equalsIgnoreCase(pkgName)) {
+            matched = true;
+        } else if (metaUrl.length() > 0 && entryMeta.length() > 0 && entryMeta.equalsIgnoreCase(metaUrl)) {
+            matched = true;
+        } else if (pkgName.length() > 0 && entryId.equalsIgnoreCase(pkgName)) {
+            matched = true;
+        } else if (item.id.length() > 0 && entryId.equalsIgnoreCase(item.id)) {
+            matched = true;
+        }
+
+        if (matched) {
+            int requiredApi = 1;
+            if (appData["api"].is<int>()) {
+                requiredApi = appData["api"].as<int>();
+            } else if (appData["api"].is<const char*>()) {
+                requiredApi = String(appData["api"].as<const char*>()).toInt();
+            }
+            if (requiredApi <= 0) requiredApi = 1;
+            if (requiredApi > KRYONOS_API_LEVEL) {
+                // Incompatible OS API level! Hide this app/update
+                return false;
+            }
+
+            item.metaSha256 = appData["meta_sha256"] | (appData["metaSha256"] | "");
+            item.appSha256  = appData["app_sha256"]  | (appData["appSha256"]  | "");
+            if (appData.containsKey("app")) {
+                item.appUrl = appData["app"].as<String>();
+            }
+            if (appData.containsKey("meta")) {
+                item.metaUrl = appData["meta"].as<String>();
+            }
+            return (item.metaSha256.length() > 0 && item.appSha256.length() > 0);
+        }
+    }
+
+    return false;
+}
+
 bool AppStoreUI::checkUpdates() {
     updateAppCount = 0;
     isUpdateMode = true;
@@ -332,25 +499,41 @@ bool AppStoreUI::checkUpdates() {
                                         JsonDocument rdoc;
                                         if (!deserializeJson(rdoc, remoteJson)) {
                                             String remoteVer = rdoc["version"].as<String>();
-                                            int remoteApi = rdoc["api"] | 1;
-                                            
-                                            if (compareVersions(remoteVer, localVer) > 0) {
+                                            int remoteApi = 1;
+                                            if (rdoc["api"].is<int>()) {
+                                                remoteApi = rdoc["api"].as<int>();
+                                            } else if (rdoc["api"].is<const char*>()) {
+                                                remoteApi = String(rdoc["api"].as<const char*>()).toInt();
+                                            }
+                                            if (remoteApi <= 0) remoteApi = 1;
+
+                                            // If app update requires a newer OS than installed, hide it from updates list
+                                            if (remoteApi <= KRYONOS_API_LEVEL && compareVersions(remoteVer, localVer) > 0) {
                                                 String baseUrl = metaUrl;
                                                 int lastSlash = baseUrl.lastIndexOf('/');
                                                 if (lastSlash > 0) baseUrl = baseUrl.substring(0, lastSlash + 1);
                                                 
-                                                updateApps[updateAppCount].id = pkgName;
-                                                updateApps[updateAppCount].name = rdoc["name"] | name;
-                                                updateApps[updateAppCount].version = remoteVer;
-                                                updateApps[updateAppCount].author = rdoc["author"] | "Unknown";
+                                                AppStoreItem& item = updateApps[updateAppCount];
+                                                item.id = pkgName;
+                                                item.name = rdoc["name"] | name;
+                                                item.version = remoteVer;
+                                                item.author = rdoc["author"] | "Unknown";
                                                 String changelog = rdoc["changelog"] | "";
                                                 if (changelog.length() > 0) {
-                                                    updateApps[updateAppCount].description = changelog;
+                                                    item.description = changelog;
                                                 } else {
-                                                    updateApps[updateAppCount].description = "Update available!";
+                                                    item.description = "Update available!";
                                                 }
-                                                updateApps[updateAppCount].metaUrl = metaUrl;
-                                                updateApps[updateAppCount].appUrl = baseUrl + "main.js";
+                                                item.metaUrl = metaUrl;
+                                                item.appUrl = baseUrl + "main.js";
+                                                item.metaSha256 = rdoc["meta_sha256"] | (rdoc["metaSha256"] | "");
+                                                item.appSha256  = rdoc["app_sha256"]  | (rdoc["appSha256"]  | "");
+
+                                                // Dynamically resolve SHA-256 hashes from categories/{category-name}/index.json
+                                                if (item.metaSha256.length() == 0 || item.appSha256.length() == 0) {
+                                                    resolveUpdateHashes(item, pkgName, metaUrl);
+                                                }
+
                                                 updateAppCount++;
                                             }
                                         }
@@ -368,6 +551,9 @@ bool AppStoreUI::checkUpdates() {
         }
     }
     
+    // Clean up cached category index file
+    LittleFS.remove("/tmp_cat_idx.json");
+
     // Copy to currentApps so the UI uses it
     currentAppCount = updateAppCount;
     for (int i=0; i<updateAppCount; i++) {
@@ -410,6 +596,11 @@ void AppStoreUI::performInstall(int appIdx) {
     
     bool metaOk = downloadFile(app.metaUrl, destFolder + "app.json", "Downloading Meta...");
     if (!metaOk) return;
+
+    // Fallback: If SHA-256 hashes are still missing, perform on-demand category index resolution
+    if (app.appSha256.length() == 0 || app.metaSha256.length() == 0) {
+        resolveUpdateHashes(app, app.id, app.metaUrl);
+    }
 
     // Mandatory SHA-256 presence check: reject unsigned/unhashed packages
     if (app.appSha256.length() == 0 || app.metaSha256.length() == 0) {
@@ -461,22 +652,30 @@ void AppStoreUI::performInstall(int appIdx) {
 // UI Draw Methods
 // ============================================================
 void AppStoreUI::drawCategories() {
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
-    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("App Store", 120, 21, 2);
-    
-    tftInstance->fillRect(10, 45, 220, 230, TFT_BLACK);
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
 
-    int yPos = 45;
-    int itemsPerPage = 7;
+    drawSystemTopBar(tftInstance, "App Store", TFT_GREEN);
+    
+    int footerH = 30;
+    int footerY = screenH - footerH - 5;
+    int listTop = 42;
+    int listBottom = footerY - 4;
+    int listHeight = listBottom - listTop;
+    int itemH = (screenH < 260) ? 26 : 30;
+    int itemsPerPage = listHeight / itemH;
+    if (itemsPerPage < 4) itemsPerPage = 4;
+
+    tftInstance->fillRect(8, listTop, screenW - 16, listHeight, TFT_BLACK);
+
+    int yPos = listTop;
     int totalItems = categoryCount;
+    int itemW = screenW - 24;
     
     if (totalItems == 0) {
         tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-        tftInstance->drawString("No categories found.", 120, 100, 2);
+        tftInstance->setTextDatum(MC_DATUM);
+        tftInstance->drawString("No categories found.", screenW / 2, listTop + listHeight / 2, 2);
     } else {
         for (int i = 0; i < itemsPerPage; i++) {
             int listIndex = scrollOffset + i;
@@ -485,52 +684,66 @@ void AppStoreUI::drawCategories() {
             String name = categoryNames[listIndex];
             
             if (listIndex == selectedIndex) {
-                tftInstance->fillRect(10, yPos, 220, 25, TFT_WHITE);
+                tftInstance->fillRect(10, yPos, itemW, itemH - 3, TFT_WHITE);
                 tftInstance->setTextColor(TFT_BLACK, TFT_WHITE);
                 tftInstance->setTextDatum(ML_DATUM);
-                tftInstance->drawString(("> " + name).c_str(), 15, yPos + 12, 2);
+                tftInstance->drawString(("> " + name).c_str(), 15, yPos + itemH / 2, 2);
             } else {
                 tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
                 tftInstance->setTextDatum(ML_DATUM);
-                tftInstance->drawString(("  " + name).c_str(), 15, yPos + 12, 2);
+                tftInstance->drawString(("  " + name).c_str(), 15, yPos + itemH / 2, 2);
             }
-            yPos += 30;
+            yPos += itemH;
         }
     }
     
     // Footer
-    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    tftInstance->drawRoundRect(5, footerY, screenW - 10, footerH, 5, TFT_WHITE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("BACK", 35, 300, 2);
-    tftInstance->drawString("|", 70, 300, 2);
-    tftInstance->drawString("UP", 100, 300, 2);
-    tftInstance->drawString("|", 130, 300, 2);
-    tftInstance->drawString("SEL", 165, 300, 2);
-    tftInstance->drawString("|", 200, 300, 2);
-    tftInstance->drawString("DN", 220, 300, 2);
+    int colW = (screenW - 10) / 4;
+    int midY = footerY + footerH / 2;
+    tftInstance->drawString("BACK", 5 + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + colW, midY, 2);
+    tftInstance->drawString("UP", 5 + colW + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + 2 * colW, midY, 2);
+    tftInstance->drawString("SEL", 5 + 2 * colW + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + 3 * colW, midY, 2);
+    tftInstance->drawString("DN", 5 + 3 * colW + colW / 2, midY, 2);
 }
 
 void AppStoreUI::drawAppList() {
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
-    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString(currentCategoryName, 120, 21, 2);
-    
-    tftInstance->fillRect(10, 45, 220, 230, TFT_BLACK);
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
 
-    int yPos = 45;
-    int itemsPerPage = 7;
+    drawSystemTopBar(tftInstance, currentCategoryName, TFT_GREEN);
+    
+    int footerH = 30;
+    int footerY = screenH - footerH - 5;
+    int listTop = 42;
+    int listBottom = footerY - 4;
+    int listHeight = listBottom - listTop;
+    int itemH = (screenH < 260) ? 26 : 30;
+    int itemsPerPage = listHeight / itemH;
+    if (itemsPerPage < 4) itemsPerPage = 4;
+
+    tftInstance->fillRect(8, listTop, screenW - 16, listHeight, TFT_BLACK);
+
+    int yPos = listTop;
     int totalItems = currentAppCount;
+    int itemW = screenW - 24;
     
     if (totalItems == 0) {
-        tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+        tftInstance->setTextDatum(MC_DATUM);
         if (isUpdateMode || currentCategoryName.indexOf("Update") != -1 || currentCategoryName.indexOf("up to date") != -1) {
-            tftInstance->drawString("No Update found.", 120, 100, 2);
+            int midY = listTop + listHeight / 2;
+            tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+            tftInstance->drawString("No New Updates Available", screenW / 2, midY - 11, 2);
+            tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+            tftInstance->drawString("All Apps Are Up To Date", screenW / 2, midY + 11, 2);
         } else {
-            tftInstance->drawString("No apps found.", 120, 100, 2);
+            tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+            tftInstance->drawString("No apps found.", screenW / 2, listTop + listHeight / 2, 2);
         }
     } else {
         for (int i = 0; i < itemsPerPage; i++) {
@@ -540,113 +753,99 @@ void AppStoreUI::drawAppList() {
             String name = currentApps[listIndex].name;
             
             if (listIndex == selectedIndex) {
-                tftInstance->fillRect(10, yPos, 220, 25, TFT_WHITE);
+                tftInstance->fillRect(10, yPos, itemW, itemH - 3, TFT_WHITE);
                 tftInstance->setTextColor(TFT_BLACK, TFT_WHITE);
                 tftInstance->setTextDatum(ML_DATUM);
-                tftInstance->drawString(("> " + name).c_str(), 15, yPos + 12, 2);
+                tftInstance->drawString(("> " + name).c_str(), 15, yPos + itemH / 2, 2);
             } else {
                 tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
                 tftInstance->setTextDatum(ML_DATUM);
-                tftInstance->drawString(("  " + name).c_str(), 15, yPos + 12, 2);
+                tftInstance->drawString(("  " + name).c_str(), 15, yPos + itemH / 2, 2);
             }
-            yPos += 30;
+            yPos += itemH;
         }
     }
     
     // Footer
-    tftInstance->drawRoundRect(5, 285, 230, 30, 5, TFT_WHITE);
+    tftInstance->drawRoundRect(5, footerY, screenW - 10, footerH, 5, TFT_WHITE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("BACK", 35, 300, 2);
-    tftInstance->drawString("|", 70, 300, 2);
-    tftInstance->drawString("UP", 100, 300, 2);
-    tftInstance->drawString("|", 130, 300, 2);
-    tftInstance->drawString("SEL", 165, 300, 2);
-    tftInstance->drawString("|", 200, 300, 2);
-    tftInstance->drawString("DN", 220, 300, 2);
+    int colW = (screenW - 10) / 4;
+    int midY = footerY + footerH / 2;
+    tftInstance->drawString("BACK", 5 + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + colW, midY, 2);
+    tftInstance->drawString("UP", 5 + colW + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + 2 * colW, midY, 2);
+    tftInstance->drawString("SEL", 5 + 2 * colW + colW / 2, midY, 2);
+    tftInstance->drawString("|", 5 + 3 * colW, midY, 2);
+    tftInstance->drawString("DN", 5 + 3 * colW + colW / 2, midY, 2);
 }
 
 void AppStoreUI::drawAppInfo() {
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
+
     tftInstance->fillScreen(TFT_BLACK);
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
+    drawSystemTopBar(tftInstance, "App Details", TFT_GREEN);
     
     AppStoreItem& app = currentApps[selectedAppIndex];
-    
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
-    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("App Details", 120, 21, 2);
-    
-    int y = 45;
+    int y = 40;
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
     tftInstance->setTextDatum(TL_DATUM);
     
-    tftInstance->drawString("Name:", 10, y, 2); y += 18;
-    tftInstance->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tftInstance->drawString(app.name, 10, y, 2); y += 22;
+    tftInstance->drawString("Name: " + app.name, 12, y, 2); y += 18;
+    tftInstance->drawString("Author: " + app.author, 12, y, 2); y += 18;
+    tftInstance->drawString("Version: " + app.version, 12, y, 2); y += 18;
     
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Author:", 10, y, 2); y += 18;
-    tftInstance->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tftInstance->drawString(app.author, 10, y, 2); y += 22;
-    
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Version:", 10, y, 2); y += 18;
-    tftInstance->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
-    tftInstance->drawString(app.version, 10, y, 2); y += 22;
-    
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    tftInstance->setTextColor(TFT_CYAN, TFT_BLACK);
     if (isUpdateMode) {
-        tftInstance->drawString("What's New:", 10, y, 2); y += 18;
+        tftInstance->drawString("What's New:", 12, y, 2); y += 16;
     } else {
-        tftInstance->drawString("Description:", 10, y, 2); y += 18;
+        tftInstance->drawString("Description:", 12, y, 2); y += 16;
     }
     tftInstance->setTextColor(TFT_LIGHTGREY, TFT_BLACK);
     
     String desc = app.description;
-    while(desc.length() > 0) {
-        int splitIdx = 25;
-        if(desc.length() <= 25) splitIdx = desc.length();
+    int maxChars = (screenW > 280) ? 36 : 25;
+    while(desc.length() > 0 && y < screenH - 45) {
+        int splitIdx = maxChars;
+        if(desc.length() <= (unsigned int)maxChars) splitIdx = desc.length();
         else {
-            int spaceIdx = desc.lastIndexOf(' ', 25);
+            int spaceIdx = desc.lastIndexOf(' ', maxChars);
             if(spaceIdx > 0) splitIdx = spaceIdx;
         }
-        tftInstance->drawString(desc.substring(0, splitIdx), 10, y, 2);
+        tftInstance->drawString(desc.substring(0, splitIdx), 12, y, 2);
         desc = desc.substring(splitIdx);
         desc.trim();
-        y += 15;
+        y += 14;
     }
     
     // Action Buttons
-    tftInstance->fillRoundRect(25, 230, 80, 30, 5, TFT_GREEN);
+    int btnW = (screenW - 50) / 2;
+    int btnY = screenH - 38;
+    tftInstance->fillRoundRect(15, btnY, btnW, 30, 5, TFT_GREEN);
     tftInstance->setTextColor(TFT_BLACK, TFT_GREEN);
     tftInstance->setTextDatum(MC_DATUM);
     if (isUpdateMode) {
-        tftInstance->drawString("UPDATE", 65, 245, 2);
+        tftInstance->drawString("UPDATE", 15 + btnW / 2, btnY + 15, 2);
     } else {
-        tftInstance->drawString("DOWNLOAD", 65, 245, 2);
+        tftInstance->drawString("DOWNLOAD", 15 + btnW / 2, btnY + 15, 2);
     }
     
-    tftInstance->drawRoundRect(135, 230, 80, 30, 5, TFT_WHITE);
+    tftInstance->drawRoundRect(screenW - btnW - 15, btnY, btnW, 30, 5, TFT_WHITE);
     tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("CANCEL", 175, 245, 2);
+    tftInstance->drawString("CANCEL", screenW - btnW - 15 + btnW / 2, btnY + 15, 2);
 }
 
 void AppStoreUI::drawDialog() {
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
+
     tftInstance->fillScreen(TFT_BLACK);
-    tftInstance->drawRoundRect(3, 3, 234, 314, 5, TFT_WHITE);
+    drawSystemTopBar(tftInstance, "Notice", TFT_GREEN);
     
-    tftInstance->fillRoundRect(6, 6, 228, 30, 5, TFT_BLACK);
-    tftInstance->drawRoundRect(6, 6, 228, 30, 5, TFT_GREEN);
-    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
-    tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("Notice", 120, 21, 2);
-    
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    
-    // Split dialogMessage by '\n' and word-wrap lines if wider than 24 chars
     std::vector<String> lines;
+    int maxChars = (screenW >= 320) ? 32 : (screenW > 280 ? 28 : 22);
     int start = 0;
     while (start < (int)dialogMessage.length()) {
         int nextNl = dialogMessage.indexOf('\n', start);
@@ -655,12 +854,12 @@ void AppStoreUI::drawDialog() {
         seg.trim();
         
         while (seg.length() > 0) {
-            if (seg.length() <= 24) {
+            if (seg.length() <= (unsigned int)maxChars) {
                 lines.push_back(seg);
                 break;
             }
-            int splitIdx = 24;
-            int spaceIdx = seg.lastIndexOf(' ', 24);
+            int splitIdx = maxChars;
+            int spaceIdx = seg.lastIndexOf(' ', maxChars);
             if (spaceIdx > 0) splitIdx = spaceIdx;
             lines.push_back(seg.substring(0, splitIdx));
             seg = seg.substring(splitIdx);
@@ -670,26 +869,58 @@ void AppStoreUI::drawDialog() {
     
     int numLines = lines.size();
     if (numLines == 0) numLines = 1;
-    int startY = 135 - ((numLines - 1) * 11);
-    if (startY < 50) startY = 50;
-    
+
+    // Centered modal dialog card geometry (Optimized for T-Deck 320x240 landscape & portrait)
+    int boxW = (screenW > 280) ? 280 : (screenW - 24);
+    int boxH = min((int)screenH - 58, (int)(numLines * 20 + 76));
+    int boxX = (screenW - boxW) / 2;
+    int boxY = 32 + ((screenH - 32 - 44) - boxH) / 2;
+    if (boxY < 34) boxY = 34;
+
+    uint16_t cardBg = tftInstance->color565(18, 22, 32);
+    uint16_t borderColor = (dialogMessage.indexOf("Blocked") >= 0 || dialogMessage.indexOf("Failed") >= 0) ? TFT_RED : TFT_GREEN;
+
+    tftInstance->fillRoundRect(boxX, boxY, boxW, boxH, 6, cardBg);
+    tftInstance->drawRoundRect(boxX, boxY, boxW, boxH, 6, borderColor);
+
+    // Text rendering: STRICT TC_DATUM (Top-Center aligned to screen center)
+    tftInstance->setTextDatum(TC_DATUM);
+    tftInstance->setTextColor(TFT_WHITE, cardBg);
+
+    int textStartY = boxY + 14;
     for (size_t i = 0; i < lines.size(); i++) {
-        tftInstance->drawString(lines[i], 120, startY + (i * 22), 2);
+        tftInstance->drawString(lines[i], screenW / 2, textStartY + (i * 20), 2);
     }
     
-    tftInstance->drawRoundRect(85, 220, 70, 30, 5, TFT_WHITE);
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
+    // Centered OK Button
+    int okY = screenH - 42;
+    tftInstance->fillRoundRect(screenW / 2 - 40, okY, 80, 28, 4, borderColor);
+    tftInstance->drawRoundRect(screenW / 2 - 40, okY, 80, 28, 4, TFT_WHITE);
+    tftInstance->setTextColor(TFT_BLACK, borderColor);
     tftInstance->setTextDatum(MC_DATUM);
-    tftInstance->drawString("OK", 120, 235, 2);
+    tftInstance->drawString("OK", screenW / 2, okY + 14, 2);
 }
 
 // ============================================================
 // Touch Handler
 // ============================================================
 void AppStoreUI::handleTouch(uint16_t x, uint16_t y) {
+    if (!tftInstance) return;
+    int16_t screenW = tftInstance->width();
+    int16_t screenH = tftInstance->height();
+    int footerH = 30;
+    int footerY = screenH - footerH - 5;
+    int listTop = 42;
+    int listBottom = footerY - 4;
+    int listHeight = listBottom - listTop;
+    int itemH = (screenH < 260) ? 26 : 30;
+    int itemsPerPage = listHeight / itemH;
+    if (itemsPerPage < 4) itemsPerPage = 4;
+    int colW = (screenW - 10) / 4;
+
     if (storeState == 0) { // Categories
-        if (y >= 45 && y <= 270) {
-            int clickedRelative = (y - 45) / 30;
+        if (y >= listTop && y < listBottom) {
+            int clickedRelative = (y - listTop) / itemH;
             int clickedAbs = scrollOffset + clickedRelative;
             if (clickedAbs < categoryCount) {
                 selectedIndex = clickedAbs;
@@ -710,17 +941,17 @@ void AppStoreUI::handleTouch(uint16_t x, uint16_t y) {
             return;
         }
         
-        if (y >= 285 && y <= 315) {
-            if (x < 70) { // BACK
+        if (y >= footerY) {
+            if (x < 5 + colW) { // BACK
                 currentState = 0;
                 categoryCount = 0; // force refetch next time
-            } else if (x >= 70 && x < 130) { // UP
+            } else if (x >= 5 + colW && x < 5 + 2 * colW) { // UP
                 if (selectedIndex > 0) {
                     selectedIndex--;
                     if (selectedIndex < scrollOffset) scrollOffset--;
                     draw();
                 }
-            } else if (x >= 130 && x < 200) { // SEL
+            } else if (x >= 5 + 2 * colW && x < 5 + 3 * colW) { // SEL
                 currentCategoryName = categoryNames[selectedIndex];
                 isUpdateMode = (categoryUrls[selectedIndex] == "UPDATE_ACTION");
                 
@@ -734,17 +965,17 @@ void AppStoreUI::handleTouch(uint16_t x, uint16_t y) {
                     scrollOffset = 0;
                     draw();
                 }
-            } else if (x >= 200) { // DN
+            } else if (x >= 5 + 3 * colW) { // DN
                 if (selectedIndex < categoryCount - 1) {
                     selectedIndex++;
-                    if (selectedIndex >= scrollOffset + 7) scrollOffset++;
+                    if (selectedIndex >= scrollOffset + itemsPerPage) scrollOffset = selectedIndex - (itemsPerPage - 1);
                     draw();
                 }
             }
         }
     } else if (storeState == 1) { // App List
-        if (y >= 45 && y <= 270) {
-            int clickedRelative = (y - 45) / 30;
+        if (y >= listTop && y < listBottom) {
+            int clickedRelative = (y - listTop) / itemH;
             int clickedAbs = scrollOffset + clickedRelative;
             if (clickedAbs < currentAppCount) {
                 selectedIndex = clickedAbs;
@@ -811,19 +1042,19 @@ void AppStoreUI::handleTouch(uint16_t x, uint16_t y) {
             return;
         }
         
-        if (y >= 285 && y <= 315) {
-            if (x < 70) { // BACK
+        if (y >= footerY) {
+            if (x < 5 + colW) { // BACK
                 storeState = 0;
                 selectedIndex = 0;
                 scrollOffset = 0;
                 draw();
-            } else if (x >= 70 && x < 130) { // UP
+            } else if (x >= 5 + colW && x < 5 + 2 * colW) { // UP
                 if (selectedIndex > 0) {
                     selectedIndex--;
                     if (selectedIndex < scrollOffset) scrollOffset--;
                     draw();
                 }
-            } else if (x >= 130 && x < 200) { // SEL
+            } else if (x >= 5 + 2 * colW && x < 5 + 3 * colW) { // SEL
                 selectedAppIndex = selectedIndex;
                 
                 // Fetch Meta for details
@@ -883,26 +1114,29 @@ void AppStoreUI::handleTouch(uint16_t x, uint16_t y) {
                 
                 storeState = 2;
                 draw();
-            } else if (x >= 200) { // DN
+            } else if (x >= 5 + 3 * colW) { // DN
                 if (selectedIndex < currentAppCount - 1) {
                     selectedIndex++;
-                    if (selectedIndex >= scrollOffset + 7) scrollOffset++;
+                    if (selectedIndex >= scrollOffset + itemsPerPage) scrollOffset = selectedIndex - (itemsPerPage - 1);
                     draw();
                 }
             }
         }
     } else if (storeState == 2) { // App Info
-        if (y >= 230 && y <= 260) {
-            if (x >= 25 && x <= 105) { // INSTALL
+        int btnW = (screenW - 50) / 2;
+        int btnY = screenH - 38;
+        if (y >= btnY - 5 && y <= btnY + 35) {
+            if (x >= 15 && x <= 15 + btnW) { // INSTALL / UPDATE
                 performInstall(selectedAppIndex);
                 draw();
-            } else if (x >= 135 && x <= 215) { // CANCEL
+            } else if (x >= screenW - btnW - 15 && x <= screenW - 15) { // CANCEL
                 storeState = 1;
                 draw();
             }
         }
     } else if (storeState == 3 || storeState == 4) { // Dialog
-        if (x >= 85 && x <= 155 && y >= 220 && y <= 250) {
+        int okY = screenH - 42;
+        if (x >= screenW / 2 - 45 && x <= screenW / 2 + 45 && y >= okY - 5 && y <= okY + 35) {
             if (categoryCount == 0) {
                 extern int currentState;
                 currentState = 0; // Back to Launcher

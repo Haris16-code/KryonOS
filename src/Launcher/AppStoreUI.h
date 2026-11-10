@@ -66,6 +66,8 @@ private:
     static bool fetchCategories();
     static bool fetchCategoryApps(const String& url);
     static bool checkUpdates();
+    static String deriveCategoryIndexUrl(const String& metaUrl);
+    static bool resolveUpdateHashes(AppStoreItem& item, const String& pkgName, const String& metaUrl);
     static int compareVersions(const String& v1, const String& v2);
     static bool downloadFile(const String& url, const String& destPath, const String& loadingMsg);
     static void performInstall(int appIdx);

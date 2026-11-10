@@ -14,17 +14,17 @@ void TouchCalibrator::init(TFT_eSPI *tft) {
 void TouchCalibrator::runCalibration() {
     if (!tftInstance) return;
 
-    tftInstance->fillScreen(TFT_BLACK);
-    tftInstance->setTextDatum(TC_DATUM);
-    tftInstance->setTextColor(TFT_WHITE, TFT_BLACK);
-    tftInstance->drawString("Touch Calibration", 120, 50, 4);
-    tftInstance->drawString("Touch the arrows at the corners", 120, 100, 2);
+    Serial.println("[TouchCal] Entering runCalibration()...");
 
     uint16_t calData[5];
-    TouchDriver::calibrateTouch(calData, TFT_RED, TFT_BLACK, 15);
+    TouchDriver::calibrateTouch(calData, TFT_RED, TFT_BLACK, 20);
 
     tftInstance->fillScreen(TFT_BLACK);
-    tftInstance->drawString("Calibration Saved!", 120, 120, 2);
+    tftInstance->setTextDatum(MC_DATUM);
+    tftInstance->setTextColor(TFT_GREEN, TFT_BLACK);
+    int16_t cx = tftInstance->width() / 2;
+    int16_t cy = tftInstance->height() / 2;
+    tftInstance->drawString("Calibration Saved!", cx, cy, 4);
 
     FileSystem::writeCalData(calData);
     TouchDriver::setTouch(calData);

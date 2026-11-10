@@ -1,0 +1,14 @@
+{
+    "name": "File Manager Pro",
+    "packageName": "com.kryonos.filemanager",
+    "version": "1.0.0",
+    "author": "KryonOS Team",
+    "description": "Advanced dual-storage file manager for KryonOS & LilyGO T-Deck Plus. Features directory navigation, file copy/move across partitions, recursive deletion, atomic metadata inspection, text editor/viewer, hex chunk inspection, and audio/image previews.",
+    "type": "Application",
+    "category": "System",
+    "api_level": 3,
+    "main": "main.js",
+    "changelog": "Initial release of File Manager Pro featuring dual storage (Flash & SD), clipboard copy/move, recursive folder deletion, modal properties, text viewer, and hex chunk inspector.",
+    "allowCompanionLaunch": true
+}
+

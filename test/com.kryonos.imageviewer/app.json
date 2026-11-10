@@ -1,0 +1,14 @@
+{
+    "name": "Image Viewer",
+    "packageName": "com.kryonos.imageviewer",
+    "version": "1.0.0",
+    "author": "KryonOS Team",
+    "description": "High-performance digital image viewer for LilyGO T-Deck Plus and KryonOS devices. Displays PNG (with 8-bit alpha blending), JPEG (with hardware downscaling), and BMP images from Flash or MicroSD.",
+    "type": "Application",
+    "category": "Media",
+    "api_level": 3,
+    "main": "main.js",
+    "changelog": "Initial release of Image Viewer featuring dual storage selection (Flash & SD Card), pre-flight metadata inspection, zoom/scale modes, pan navigation, trackball controls, and slideshow.",
+    "allowCompanionLaunch": true
+}
+

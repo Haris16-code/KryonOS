@@ -75,6 +75,21 @@ void setBacklight(uint8_t brightness) {
 #endif
 }
 
+static uint8_t s_cyd_bl = 100;
+
+void setBacklightLevel(uint8_t percent) {
+    s_cyd_bl = constrain(percent, 0, 100);
+    setBacklight((uint8_t)map(s_cyd_bl, 0, 100, 0, 255));
+}
+
+uint8_t getBacklightLevel(void) {
+    return s_cyd_bl;
+}
+
+void setKeyboardBacklight(bool enable) { (void)enable; }
+void setKeyboardBacklightLevel(uint8_t percent) { (void)percent; }
+uint8_t getKeyboardBacklightLevel(void) { return 0; }
+
 void setRGBLED(uint8_t red, uint8_t green, uint8_t blue, bool true_color) {
 #if defined(CYD_LED_RED) && defined(CYD_LED_GREEN) && defined(CYD_LED_BLUE)
     pinMode(CYD_LED_RED, OUTPUT);
@@ -160,7 +175,9 @@ void deinitSD(void) {
 
 uint64_t getSDTotalBytes(void) {
     if (SD.cardType() == CARD_NONE) return 0;
-    return SD.totalBytes();
+    uint64_t total = SD.totalBytes();
+    if (total == 0) total = SD.cardSize();
+    return total;
 }
 
 uint64_t getSDUsedBytes(void) {
@@ -182,5 +199,8 @@ bool isShiftActive(void) { return false; }
 bool isFnActive(void) { return false; }
 float getBatteryVoltage(void) { return 0.0f; }
 int getBatteryPercent(void) { return 0; }
+bool isChargerConnected(void) { return false; }
+int getEstimatedChargeTimeMins(void) { return 0; }
+int getEstimatedDischargeTimeMins(void) { return 0; }
 
 #endif // TARGET_CYD

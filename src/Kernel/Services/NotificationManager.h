@@ -40,7 +40,7 @@ public:
     static const int16_t CARD_R = 6;
     static const int16_t RESTING_Y = 8;
     static const int16_t HIDDEN_Y = -44;
-    static const int16_t SHADOW_W = 240;
+    static const int16_t SHADOW_W = 320;
     static const int16_t SHADOW_H = 64;
 
     static void init();

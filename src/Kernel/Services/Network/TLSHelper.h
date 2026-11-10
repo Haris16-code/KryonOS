@@ -3,12 +3,15 @@
 
 #include <Arduino.h>
 #include <WiFiClientSecure.h>
+#include <HTTPClient.h>
 
 class TLSHelper {
 public:
-    // Configures WiFiClientSecure with proper CA certificate validation based on target URL/host.
-    // Replaces unsafe client.setInsecure() calls throughout the OS.
+    // Configures WiFiClientSecure with permissive TLS, proper 30s timeout, and disables WiFi modem sleep
     static void configureTLS(WiFiClientSecure& client, const String& url);
+
+    // Standardizes HTTPClient timeouts (connect + socket) and headers across OS services
+    static void configureHTTP(HTTPClient& http, uint32_t timeoutMs = 30000);
 
     // Convenience helper to extract the hostname from a full URL.
     static String extractHost(const String& url);

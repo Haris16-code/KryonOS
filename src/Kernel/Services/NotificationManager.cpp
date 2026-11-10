@@ -45,7 +45,7 @@ void NotificationManager::ensureSprites(TFT_eSPI* tft) {
         if (s_shadowSprite) {
             void* buf = s_shadowSprite->createSprite(SHADOW_W, SHADOW_H);
             if (buf) {
-                s_shadowSprite->fillScreen(0x0821);
+                s_shadowSprite->fillSprite(0x0821);
             } else {
                 delete s_shadowSprite;
                 s_shadowSprite = nullptr;
@@ -77,19 +77,25 @@ void NotificationManager::restoreBgRegion(TFT_eSPI* tft, int16_t y, int16_t h) {
     if (y + h > SHADOW_H) h = SHADOW_H - y;
     if (h <= 0) return;
 
+    int16_t sw = min((int16_t)tft->width(), SHADOW_W);
     if (s_savedBg && s_bgCaptured) {
-        tft->pushImage(0, y, SHADOW_W, h, s_savedBg + (y * SHADOW_W));
+        for (int16_t row = 0; row < h; row++) {
+            tft->pushImage(0, y + row, sw, 1, s_savedBg + ((y + row) * SHADOW_W));
+        }
     } else {
-        tft->fillRect(0, y, SHADOW_W, h, 0x0821);
+        tft->fillRect(0, y, sw, h, 0x0821);
     }
 }
 
 void NotificationManager::restoreBgFull(TFT_eSPI* tft) {
     if (!tft) return;
+    int16_t sw = min((int16_t)tft->width(), SHADOW_W);
     if (s_savedBg && s_bgCaptured) {
-        tft->pushImage(0, 0, SHADOW_W, SHADOW_H, s_savedBg);
+        for (int16_t row = 0; row < SHADOW_H; row++) {
+            tft->pushImage(0, row, sw, 1, s_savedBg + (row * SHADOW_W));
+        }
     } else {
-        tft->fillRect(0, 0, SHADOW_W, SHADOW_H, 0x0821);
+        tft->fillRect(0, 0, sw, SHADOW_H, 0x0821);
     }
     s_bgCaptured = false;
 }
@@ -140,15 +146,17 @@ void NotificationManager::pushCardToScreen(TFT_eSPI* tft, int16_t y) {
     uint16_t* sprBuf = (uint16_t*)s_cardSprite->getPointer();
     if (!sprBuf) return;
 
+    int16_t cardX = max((int16_t)CARD_X, (int16_t)((tft->width() - CARD_W) / 2));
+
     if (y >= 0) {
         // Fully on screen
-        tft->pushImage(CARD_X, y, CARD_W, CARD_H, sprBuf);
+        tft->pushImage(cardX, y, CARD_W, CARD_H, sprBuf);
     } else {
         // Partially off-screen at top edge (y < 0)
         int16_t skipRows = -y;
         int16_t visH = CARD_H - skipRows;
         if (visH > 0 && visH <= CARD_H) {
-            tft->pushImage(CARD_X, 0, CARD_W, visH, sprBuf + (skipRows * CARD_W));
+            tft->pushImage(cardX, 0, CARD_W, visH, sprBuf + (skipRows * CARD_W));
         }
     }
 }

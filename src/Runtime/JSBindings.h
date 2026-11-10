@@ -12,8 +12,12 @@ public:
     static void setSandboxRoot(const String& root);
     static String getSandboxRoot();
     static TFT_eSPI* getTFT() { return tftInstance; }
+    static TFT_eSprite* getActiveSprite();
     static void revokeSessionPermission(const String& pkg);
     static void clearAllSessionPermissions();
+    static String getAppPackageName();
+    static bool checkLocationPermission();
+    static bool promptEnableGPSMasterSwitch();
 
 private:
     static TFT_eSPI *tftInstance;
@@ -104,6 +108,10 @@ private:
     static duk_ret_t js_drawRoundRect(duk_context *ctx);
     static duk_ret_t js_fillRoundRect(duk_context *ctx);
     static duk_ret_t js_drawBMP(duk_context *ctx);
+    static duk_ret_t js_drawImage(duk_context *ctx);
+    static duk_ret_t js_drawPNG(duk_context *ctx);
+    static duk_ret_t js_drawJPG(duk_context *ctx);
+    static duk_ret_t js_getImageInfo(duk_context *ctx);
 
     // Display Bindings - Text
     static duk_ret_t js_drawString(duk_context *ctx);
@@ -213,9 +221,69 @@ private:
     static duk_ret_t js_getFileMD5(duk_context *ctx);
     static duk_ret_t js_mountSD(duk_context *ctx);
     static duk_ret_t js_unmountSD(duk_context *ctx);
+    static duk_ret_t js_isSDMounted(duk_context *ctx);
+    static duk_ret_t js_readChunk(duk_context *ctx);
+    static duk_ret_t js_readBinary(duk_context *ctx);
+    static duk_ret_t js_writeBinary(duk_context *ctx);
+    static duk_ret_t js_copyFile(duk_context *ctx);
+    static duk_ret_t js_stat(duk_context *ctx);
+    static duk_ret_t js_fs_pick(duk_context *ctx);
+    static duk_ret_t js_fs_pickDir(duk_context *ctx);
 
     // Keyboard Bindings
     static duk_ret_t js_prompt(duk_context *ctx);
+    static duk_ret_t js_keyboard_isAvailable(duk_context *ctx);
+    static duk_ret_t js_keyboard_getKey(duk_context *ctx);
+    static duk_ret_t js_keyboard_getEvent(duk_context *ctx);
+    static duk_ret_t js_keyboard_hasKey(duk_context *ctx);
+    static duk_ret_t js_keyboard_clear(duk_context *ctx);
+    static duk_ret_t js_keyboard_getModifiers(duk_context *ctx);
+    static duk_ret_t js_keyboard_setBacklight(duk_context *ctx);
+    static duk_ret_t js_keyboard_setBacklightLevel(duk_context *ctx);
+    static duk_ret_t js_keyboard_getBacklightLevel(duk_context *ctx);
+    static duk_ret_t js_keyboard_readString(duk_context *ctx);
+
+    // Trackball Bindings
+    static duk_ret_t js_trackball_getState(duk_context *ctx);
+    static duk_ret_t js_trackball_getDelta(duk_context *ctx);
+    static duk_ret_t js_trackball_isPressed(duk_context *ctx);
+    static duk_ret_t js_trackball_isClicked(duk_context *ctx);
+    static duk_ret_t js_trackball_getRawCounts(duk_context *ctx);
+    static duk_ret_t js_trackball_reset(duk_context *ctx);
+
+    // Speaker & Audio Bindings
+    static duk_ret_t js_speaker_playWav(duk_context *ctx);
+    static duk_ret_t js_speaker_playMp3(duk_context *ctx);
+    static duk_ret_t js_speaker_play(duk_context *ctx);
+    static duk_ret_t js_speaker_seek(duk_context *ctx);
+    static duk_ret_t js_speaker_playTone(duk_context *ctx);
+    static duk_ret_t js_speaker_playMelody(duk_context *ctx);
+    static duk_ret_t js_speaker_playBeep(duk_context *ctx);
+    static duk_ret_t js_speaker_stop(duk_context *ctx);
+    static duk_ret_t js_speaker_pause(duk_context *ctx);
+    static duk_ret_t js_speaker_resume(duk_context *ctx);
+    static duk_ret_t js_speaker_isPlaying(duk_context *ctx);
+    static duk_ret_t js_speaker_getDuration(duk_context *ctx);
+    static duk_ret_t js_speaker_getPosition(duk_context *ctx);
+    static duk_ret_t js_speaker_setVolume(duk_context *ctx);
+    static duk_ret_t js_speaker_getVolume(duk_context *ctx);
+    static duk_ret_t js_speaker_mute(duk_context *ctx);
+    static duk_ret_t js_speaker_isMuted(duk_context *ctx);
+
+    // Device Information Bindings
+    static duk_ret_t js_device_getName(duk_context *ctx);
+    static duk_ret_t js_device_hasTrackball(duk_context *ctx);
+    static duk_ret_t js_device_hasKeyboard(duk_context *ctx);
+    static duk_ret_t js_device_hasSpeaker(duk_context *ctx);
+    static duk_ret_t js_device_hasTouch(duk_context *ctx);
+    static duk_ret_t js_device_hasBattery(duk_context *ctx);
+    static duk_ret_t js_device_getBatteryPercent(duk_context *ctx);
+    static duk_ret_t js_device_getBatteryVoltage(duk_context *ctx);
+    static duk_ret_t js_device_isCharging(duk_context *ctx);
+    static duk_ret_t js_device_getChargeTimeRemaining(duk_context *ctx);
+    static duk_ret_t js_device_getDischargeTimeRemaining(duk_context *ctx);
+    static duk_ret_t js_device_setBrightness(duk_context *ctx);
+    static duk_ret_t js_device_getBrightness(duk_context *ctx);
 
     // FastMath & Hardware Acceleration Bindings
     static duk_ret_t js_math_sin(duk_context *ctx);
@@ -286,7 +354,6 @@ private:
     static float fogNear, fogFar;
 
     // Helper
-    static TFT_eSprite* getActiveSprite();
     static void fatalErrorHandler(void *udata, const char *msg);
 };
 
