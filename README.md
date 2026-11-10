@@ -219,7 +219,6 @@ pio run -e lilygo-t-deck -t upload
 pio run -e esp32-s3-devkitc-1-n16r8 -t upload  # ESP32 S3 N16R8 DevKit
 pio run -e m5stack-cardputer -t upload   # M5Stack Cardputer
 pio run -e lilygo-t-hmi -t upload        # LilyGO T-HMI
-pio run -e esp32-cyd-28 -t upload        # ESP32 Cheap Yellow Display
 </pre>
 
 <hr>
