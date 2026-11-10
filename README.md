@@ -58,45 +58,80 @@
 <hr>
 <p>KryonOS is an <strong>open-source</strong>, lightweight, high-performance <strong>GUI Operating System and JavaScript App Runtime</strong> designed specifically for the ESP32 and ESP32-S3 microcontrollers. It provides a complete desktop-like experience on embedded devices, featuring an integrated JS engine (Duktape) for executing standalone JavaScript applications, double-buffered graphics for smooth 2D/3D rendering, KryonCloud services, on-device AI streaming, an App Store, file management, and direct hardware API access.</p>
 
-<table border="1" cellpadding="6" cellspacing="0">
+
+<table align="center">
   <thead>
     <tr>
+      <th align="center">LilyGO T-Deck Plus<br><sub>Tested, Verified, and Stable</sub></th>
       <th align="center">Multiple Devices Running KryonOS</th>
-      <th align="center">M5Stack Cardputer v1.1</th>
-      <th align="center">CYD (Cheap Yellow Display)</th>
-      <th align="center">LilyGO T-HMI</th>
+      <th align="center">M5Stack Cardputer v1.1<br><sub>Experimental</sub></th>
+      <th align="center">LilyGO T-HMI<br><sub>Experimental</sub></th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td align="center"><img src="Documentation/assets/imgs/Devices.jpg" width="220" alt="Hardware Overview"></td>
-      <td align="center"><img src="Documentation/assets/imgs/Cardputer-V1.1.jpg" width="220" alt="Cardputer [Experimental]"></td>
-      <td align="center"><img src="Documentation/assets/imgs/CYD2432S028R.jpg" width="220" alt="CYD [Experimental]"></td>
-      <td align="center"><img src="Documentation/assets/imgs/Lilygo-T-HMI.jpg" width="220" alt="T-HMI [Experimental]"></td>
+      <td align="center">
+        <img src="Documentation/assets/imgs/t-deck-plus.jpg" width="260" alt="LilyGO T-Deck Plus">
+      </td>
+      <td align="center">
+        <img src="Documentation/assets/imgs/Devices.jpg" width="190" alt="Multiple devices running KryonOS">
+      </td>
+      <td align="center">
+        <img src="Documentation/assets/imgs/Cardputer-V1.1.jpg" width="190" alt="M5Stack Cardputer v1.1">
+      </td>
+      <td align="center">
+        <img src="Documentation/assets/imgs/Lilygo-T-HMI.jpg" width="190" alt="LilyGO T-HMI">
+      </td>
     </tr>
   </tbody>
 </table>
 
-<p align="center">
-  <img src="Documentation/assets/imgs/kryonos-home.jpg" alt="KryonOS Home Interface" width="600">
-</p>
 
 <hr>
-
 <h2>Features</h2>
+
 <ul>
-  <li><strong>JavaScript App Runtime (v2.0.0 / API Level 2):</strong> Execute interactive, standalone JS apps natively on the ESP32 using the optimized Duktape ECMAScript engine.</li>
-  <li><strong>Multi-Board Hardware Abstraction Layer (HAL):</strong> Unified hardware architecture with out-of-the-box support for touch screens, parallel displays, matrix keyboards, and multi-bus SD cards.</li>
-  <li><strong>KryonCloud Services &amp; On-Device AI Engine (<code>Kryon.ai</code> / <code>System.ai</code>):</strong> Real-time token streaming (<code>SSE</code>), structured JSON extraction, and vision processing directly on device.</li>
+  <li><strong>JavaScript App Runtime (API Level 3):</strong> Execute interactive, standalone JavaScript applications natively on ESP32 using the optimized Duktape ECMAScript engine, with expanded hardware integration and new JavaScript APIs.</li>
+
+  <li><strong>LilyGO T-Deck Plus Support:</strong> Dedicated hardware profile with support for the ST7789 display, GT911 touch controller, physical keyboard, trackball, MicroSD card, battery monitoring, and peripheral power management.</li>
+
+  <li><strong>On-Device AI Image Generation Engine:</strong> Generate images directly on supported ESP32-S3 devices using the integrated 4.0-million-parameter DCGAN-96 neural image generation model.</li>
+
+  <li><strong>Complete Bluetooth Subsystem:</strong> Comprehensive Bluetooth support with JavaScript APIs for BLE scanning, GATT client and server operations, advertising, and BLE HID keyboard functionality.</li>
+
+  <li><strong>Global GPS Subsystem:</strong> Integrated GPS functionality with JavaScript APIs, location tracking, GPS settings, geodesy calculations, and automatic time synchronization.</li>
+
+  <li><strong>Native Audio Engine:</strong> Built-in MP3 audio playback engine, WAV support, and expanded JavaScript audio APIs for audio-enabled applications and hardware.</li>
+
+  <li><strong>Advanced Image Rendering:</strong> Native PNG, JPEG, and BMP image decoding and rendering, enabling image-based applications, viewers, and graphical interfaces.</li>
+
+  <li><strong>Secure MicroSD Backup &amp; Disaster Recovery:</strong> Complete internal storage backup and restoration with AES-256-CBC encryption, HMAC-SHA256 integrity verification, device-locked protection, and passphrase-protected backups.</li>
+
+  <li><strong>Expanded Hardware JavaScript APIs:</strong> Dedicated JavaScript interfaces for Trackball, Keyboard, Speaker, and Device functionality, enabling applications to interact directly with supported hardware.</li>
+
+  <li><strong>Advanced Filesystem APIs:</strong> Expanded JavaScript file management with binary and chunk-based reading, binary writing, file copying, file statistics, directory removal, and SD card mount detection.</li>
+
+  <li><strong>Responsive Display Framework:</strong> Improved UI architecture with responsive layouts and support for both portrait and landscape display orientations.</li>
+
+  <li><strong>KryonCloud Services &amp; On-Device AI Integration:</strong> Cloud-connected AI capabilities through <code>Kryon.ai</code> and <code>System.ai</code>, including real-time token streaming (<code>SSE</code>), structured JSON extraction, and vision processing.</li>
+
   <li><strong>KryonBeam Mesh Messenger:</strong> Hardware-to-hardware communication across paired devices with broadcast and direct messaging channels.</li>
-  <li><strong>Kryon3D Graphics Rasterizer (<code>Kryon3D</code> / <code>System.graphics3d</code>):</strong> Native hardware-accelerated 3D engine supporting wireframes, solid shaded polygon meshes, camera controls, lighting vectors, and distance fog.</li>
-  <li><strong>FastMath Acceleration Engine (<code>FastMath</code> / <code>System.math</code>):</strong> FPU-accelerated trigonometry, pre-computed 360&deg; LUT, and hardware True Random Number Generator (<code>TRNG</code>).</li>
-  <li><strong>Anti-Rollback Wireless OTA Updater:</strong> Two-tier manifest resolution (<code>update.json</code>), streaming 4KB chunk flashing, MD5 integrity checks, and automatic bootloader rollback recovery.</li>
-  <li><strong>Rich UI &amp; Double-Buffering:</strong> Built-in graphics library with double-buffering and mini-sprite support for tear-free, flicker-free rendering.</li>
-  <li><strong>App Store &amp; Cloud Marketplace:</strong> Browse, download, and install JavaScript apps and games dynamically over Wi-Fi.</li>
-  <li><strong>File Management &amp; Multi-Bus SD:</strong> Full-featured file explorer and text editor utilizing LittleFS internal storage and high-speed SD/SD_MMC cards.</li>
-  <li><strong>Hardware-Backed Security Architecture (v2.0.1):</strong> Silicon TRNG AES-256 encrypted credential vaults (`/system/`), strict TLS root CA certificate verification across all cloud/OTA endpoints, scoped JavaScript runtime sandboxing, and authenticated Web Management.</li>
-  <li><strong>Comprehensive Hardware APIs:</strong> Direct JavaScript control over GPIO, I2C bus scanning/transfers, high-frequency PWM tone generators, hardware cryptographic hashing/AES, and ADC battery monitoring.</li>
+
+  <li><strong>Kryon3D Graphics Rasterizer:</strong> Native 3D graphics functionality through <code>Kryon3D</code> and <code>System.graphics3d</code>, supporting wireframes, solid shaded polygon meshes, camera controls, lighting vectors, and distance fog.</li>
+
+  <li><strong>FastMath Acceleration Engine:</strong> Optimized mathematical operations through <code>FastMath</code> and <code>System.math</code>, including FPU-accelerated trigonometry, pre-computed 360-degree lookup tables, and hardware True Random Number Generation (<code>TRNG</code>).</li>
+
+  <li><strong>Anti-Rollback Wireless OTA Updater:</strong> Secure firmware updates with manifest resolution, streaming 4KB chunk flashing, integrity verification, and automatic bootloader rollback recovery.</li>
+
+  <li><strong>Rich UI &amp; Graphics Framework:</strong> Built-in graphics library with double-buffering, mini-sprite support, and improved rendering performance for responsive, flicker-free interfaces.</li>
+
+  <li><strong>App Store &amp; Cloud Marketplace:</strong> Browse, download, and install JavaScript applications and games dynamically over Wi-Fi, with improved package integrity verification and API compatibility checks.</li>
+
+  <li><strong>File Management &amp; Multi-Bus Storage:</strong> Integrated file explorer and text editor with LittleFS internal storage and external MicroSD/SD_MMC support.</li>
+
+  <li><strong>Hardware-Backed Security Architecture:</strong> Silicon-based cryptographic support, encrypted credential storage, TLS certificate verification, JavaScript runtime sandboxing, application permissions management, and authenticated Web Management.</li>
+
+  <li><strong>Expanded System Applications &amp; Diagnostics:</strong> New built-in applications, development examples, and diagnostic utilities for Bluetooth, GPS, audio, images, filesystems, T-Deck Plus hardware, and JavaScript APIs.</li>
 </ul>
 
 <hr>
@@ -116,7 +151,7 @@
   </thead>
   <tbody>
     <tr>
-      <td><strong>ESP32-S3 DevKitC-1</strong></td>
+      <td><strong>T-Deck / Plus</strong></td>
       <td><strong>Default / Stable</strong></td>
       <td>ESP32-S3</td>
       <td>16MB Flash, 8MB Octal PSRAM</td>
@@ -124,10 +159,10 @@
       <td>XPT2046 Touch</td>
     </tr>
     <tr>
-      <td><strong>ESP32 DevKit v1 / WROOM-32</strong></td>
+      <td><strong>ESP32-S3 DevKitC-1</strong></td>
       <td><strong>Stable</strong></td>
-      <td>ESP32</td>
-      <td>4MB Flash</td>
+      <td>ESP32-S3</td>
+      <td>16MB Flash, 8MB Octal PSRAM</td>
       <td>ILI9341 240x320 SPI</td>
       <td>XPT2046 Touch</td>
     </tr>
@@ -147,157 +182,16 @@
       <td>ST7789 240x320 8-Bit Parallel</td>
       <td>XPT2046 Touch &amp; SD_MMC</td>
     </tr>
-    <tr>
-      <td><strong>ESP32-CYD-28</strong> <em>(Cheap Yellow Display)</em></td>
-      <td><em>Experimental</em></td>
-      <td>ESP32</td>
-      <td>4MB Flash</td>
-      <td>ILI9341 240x320 SPI</td>
-      <td>XPT2046 Touch &amp; RGB LED</td>
-    </tr>
   </tbody>
 </table>
 
-<p><strong>Note on Experimental Boards (M5Stack Cardputer, LilyGO T-HMI, ESP32-CYD-28):</strong> Target boards marked as <em>Experimental</em> are implemented at the driver and HAL level but currently lack hands-on physical verification due to unavailable test hardware. If you test or flash KryonOS on these boards and encounter any issues or calibration offsets, please submit an issue on GitHub. Community feedback and contributions for these devices are strongly encouraged!</p>
+<p><strong>Note on Experimental Boards (M5Stack Cardputer, LilyGO T-HMI):</strong> Target boards marked as <em>Experimental</em> are implemented at the driver and HAL level but currently lack hands-on physical verification due to unavailable test hardware. If you test or flash KryonOS on these boards and encounter any issues or calibration offsets, please submit an issue on GitHub. Community feedback and contributions for these devices are strongly encouraged!</p>
 
 <blockquote>
   <p><strong>ESP32-S3 N16R8 Setup:</strong> For wiring schematics, PSRAM configuration, and PlatformIO setup for the default reference board, see the <strong><a href="Documentation/ESP32_S3_N16R8_Guide.md">ESP32-S3 N16R8 Guide</a></strong>.</p>
   <p><strong>Multi-Board Architecture:</strong> For pinout tables and build configurations across all supported boards, see the <strong><a href="Documentation/Hardware_Architecture.md">Hardware Architecture Guide</a></strong>.</p>
 </blockquote>
-
 <hr>
-
-<h2>Pin Connections (Default Reference Setup)</h2>
-
-<p>KryonOS requires an ILI9341 2.8 Inch Touch display and an SD card module. To achieve the best performance and avoid bus collisions, KryonOS uses <strong>split SPI buses</strong>.</p>
-<ul>
-  <li><strong>VSPI / Main SPI:</strong> Used exclusively for the TFT Display and Touch controller.</li>
-  <li><strong>HSPI / Secondary SPI:</strong> Used exclusively for the SD Card Module.</li>
-</ul>
-
-<blockquote>
-  <p><strong>ESP32 Marauder Compatibility:</strong> Out-of-the-box, the default display and touch pinouts in KryonOS match the <strong>ESP32 Marauder (v4, v6, and v6.1)</strong> hardware!</p>
-</blockquote>
-
-<h3>Default Pin Configuration (ESP32 WROOM-32 / DevKit v1)</h3>
-
-<table border="1" cellpadding="6" cellspacing="0">
-  <thead>
-    <tr>
-      <th>ILI9341 2.8 Inch Touch Display Pins</th>
-      <th>ILI9341 Display Pin Labels</th>
-      <th>ESP32 Pin</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>1</strong></td>
-      <td>VCC</td>
-      <td>3.3V</td>
-    </tr>
-    <tr>
-      <td><strong>2</strong></td>
-      <td>GND</td>
-      <td>GND</td>
-    </tr>
-    <tr>
-      <td><strong>3</strong></td>
-      <td>CS</td>
-      <td>D17 (TXD 2)</td>
-    </tr>
-    <tr>
-      <td><strong>4</strong></td>
-      <td>RESET</td>
-      <td>D5</td>
-    </tr>
-    <tr>
-      <td><strong>5</strong></td>
-      <td>DC</td>
-      <td>D16 (RXD 2)</td>
-    </tr>
-    <tr>
-      <td><strong>6</strong></td>
-      <td>SDI (MOSI)</td>
-      <td>D23</td>
-    </tr>
-    <tr>
-      <td><strong>7</strong></td>
-      <td>SCK</td>
-      <td>D18</td>
-    </tr>
-    <tr>
-      <td><strong>8</strong></td>
-      <td>LED</td>
-      <td>D32</td>
-    </tr>
-    <tr>
-      <td><strong>9</strong></td>
-      <td>SDO (MISO)</td>
-      <td>D19</td>
-    </tr>
-    <tr>
-      <td><strong>10</strong></td>
-      <td>T_CLK</td>
-      <td>D18</td>
-    </tr>
-    <tr>
-      <td><strong>11</strong></td>
-      <td>T_CS</td>
-      <td>D21</td>
-    </tr>
-    <tr>
-      <td><strong>12</strong></td>
-      <td>T_DIN</td>
-      <td>D23</td>
-    </tr>
-    <tr>
-      <td><strong>13</strong></td>
-      <td>T_DO</td>
-      <td>D19</td>
-    </tr>
-    <tr>
-      <td><strong>14</strong></td>
-      <td>T_IRQ</td>
-      <td>X (Not Connected)</td>
-    </tr>
-  </tbody>
-</table>
-
-<h3>SD Card Module (HSPI)</h3>
-<table border="1" cellpadding="6" cellspacing="0">
-  <thead>
-    <tr>
-      <th>SD Card Module</th>
-      <th>ESP32 Pin</th>
-      <th>Notes</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td><strong>MOSI</strong></td>
-      <td>GPIO 13</td>
-      <td>SD SPI MOSI</td>
-    </tr>
-    <tr>
-      <td><strong>MISO</strong></td>
-      <td>GPIO 26</td>
-      <td>SD SPI MISO</td>
-    </tr>
-    <tr>
-      <td><strong>SCK / CLK</strong></td>
-      <td>GPIO 14</td>
-      <td>SD SPI Clock</td>
-    </tr>
-    <tr>
-      <td><strong>CS</strong></td>
-      <td>GPIO 15</td>
-      <td>SD Card Chip Select</td>
-    </tr>
-  </tbody>
-</table>
-
-<hr>
-
 <h2>How to Flash</h2>
 
 <h3>Option 1: Using Precompiled Binaries</h3>
@@ -318,13 +212,15 @@ git clone https://github.com/Haris16-code/KryonOS.git
 cd KryonOS
 
 # 2. Build &amp; Upload for Default Board (ESP32-S3 DevKitC-1 N16R8)
-pio run -e esp32-s3-devkitc-1-n16r8 -t upload
+pio run -e lilygo-t-deck -t upload
+  
 
 # Or compile for other boards:
+pio run -e esp32-s3-devkitc-1-n16r8 -t upload  # ESP32 S3 N16R8 DevKit
 pio run -e m5stack-cardputer -t upload   # M5Stack Cardputer
 pio run -e lilygo-t-hmi -t upload        # LilyGO T-HMI
 pio run -e esp32-cyd-28 -t upload        # ESP32 Cheap Yellow Display
-pio run -e esp32doit-devkit-v1 -t upload # ESP32 DevKit v1</pre>
+</pre>
 
 <hr>
 <h2>Documentation</h2>
@@ -407,7 +303,7 @@ Areas where contributions are especially useful include:
 </ul>
 <h2>Support KryonOS</h2>
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
-<p>Due to budget constraints, experimental board ports (Cardputer, T-HMI, CYD) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
+<p>Due to budget constraints, experimental board ports (Cardputer, T-HMI) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
 <p>&rarr; <a href="https://patreon.com/KryonOS">Support KryonOS Development</a></p>
 <hr>
 
