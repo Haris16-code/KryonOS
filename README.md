@@ -38,8 +38,6 @@ Flash KryonOS directly to your supported ESP32 device from your browser. No manu
   <img src="https://img.shields.io/badge/Open-Web%20Flasher-0284C7?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Open KryonOS Web Flasher">
 </a>
 
-<sub>Connect your device via USB, select the firmware, and follow the flashing instructions.</sub>
-
 </div>
 
 ---
