@@ -150,14 +150,14 @@
     </tr>
   </thead>
   <tbody>
-    <tr>
-      <td><strong>T-Deck / Plus</strong></td>
-      <td><strong>Default / Stable</strong></td>
-      <td>ESP32-S3</td>
-      <td>16MB Flash, 8MB Octal PSRAM</td>
-      <td>ILI9341 240x320 SPI</td>
-      <td>XPT2046 Touch</td>
-    </tr>
+<tr>
+  <td><strong>T-Deck Plus</strong></td>
+  <td><strong>Default / Stable</strong></td>
+  <td>ESP32-S3</td>
+  <td>16MB Flash, 8MB Octal PSRAM</td>
+  <td>ST7789 320x240 SPI</td>
+  <td>Trackball Input, Goodix GT911 Touch</td>
+</tr>
     <tr>
       <td><strong>ESP32-S3 DevKitC-1</strong></td>
       <td><strong>Stable</strong></td>
