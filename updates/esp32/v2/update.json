@@ -1,46 +1,46 @@
 {
   "release": {
-    "version": "2.0.1",
-    "api_version": 2,
-    "type": "patch",
-    "changelog": "- Security Hardening, Permissions & Runtime Improvements"
+    "version": "3.0.0",
+    "api_version": 3,
+    "type": "major",
+    "changelog": "- Major Update: T-Deck Plus Support, Bluetooth, GPS, Local AI & More"
   },
   "boards": {
     "esp32-s3-devkitc-1-n16r8": {
-      "version": "2.0.1",
-      "type": "patch",
-      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
+      "version": "3.0.0",
+      "type": "major",
+      "changelog": "- Major Update: T-Deck Plus Support, Bluetooth, GPS, Local AI & More",
       "supports_ota": true,
-      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-esp32-s3-devkitc-1-n16r8-firmware-0x10000.bin",
-      "firmware_size": 1754896,
-      "firmware_md5": "df42e54f43c03d2339bf9759e97a1143"
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v3.0.0/KryonOS-v3.0.0-esp32-s3-devkitc-1-n16r8-firmware-0x10000.bin",
+      "firmware_size": 2808448,
+      "firmware_md5": "937659e0e845d78a788a0724bf8b6a97"
     },
     "m5stack-cardputer": {
-      "version": "2.0.1",
-      "type": "patch",
-      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
+      "version": "3.0.0",
+      "type": "major",
+      "changelog": "- Major Update: T-Deck Plus Support, Bluetooth, GPS, Local AI & More",
       "supports_ota": true,
-      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-m5stack-cardputer-firmware-0x10000.bin",
-      "firmware_size": 1738880,
-      "firmware_md5": "c649ca8bb5c1fc642b7df508a8e11897"
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v3.0.0/KryonOS-v3.0.0-m5stack-cardputer-firmware-0x10000.bin",
+      "firmware_size": 2796016,
+      "firmware_md5": "4e0a08c2fc3275186f852158812e86dc"
     },
     "lilygo-t-hmi": {
-      "version": "2.0.1",
-      "type": "patch",
-      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
+      "version": "3.0.0",
+      "type": "major",
+      "changelog": "- Major Update: T-Deck Plus Support, Bluetooth, GPS, Local AI & More",
       "supports_ota": true,
-      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-lilygo-t-hmi-firmware-0x10000.bin",
-      "firmware_size": 1750608,
-      "firmware_md5": "be57b1ef355ee2c1de6dd8acc2f86d65"
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v3.0.0/KryonOS-v3.0.0-lilygo-t-hmi-firmware-0x10000.bin",
+      "firmware_size": 2807104,
+      "firmware_md5": "0ccba7fd785a696a4b677c713c72bccf"
     },
     "lilygo-t-deck": {
-      "version": "2.0.1",
-      "type": "patch",
-      "changelog": "- Security Hardening, Permissions & Runtime Improvements",
+      "version": "3.0.0",
+      "type": "major",
+      "changelog": "- Major Update: T-Deck Plus Support, Bluetooth, GPS, Local AI & More",
       "supports_ota": true,
-      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v2.0.1/KryonOS-v2.0.1-lilygo-t-deck-firmware-0x10000.bin",
-      "firmware_size": 1754896,
-      "firmware_md5": ""
+      "firmware_url": "https://github.com/Haris16-code/KryonOS/releases/download/v3.0.0/KryonOS-v3.0.0-lilygo-t-deck-firmware-0x10000.bin",
+      "firmware_size": 2857248,
+      "firmware_md5": "97827d53ca1e6ecb646d1b032e40f6f0"
     }
   }
 }
