@@ -227,7 +227,7 @@ Flash KryonOS directly to your supported ESP32 device from your browser. No manu
 git clone https://github.com/Haris16-code/KryonOS.git
 cd KryonOS
 
-# 2. Build &amp; Upload for Default Board (ESP32-S3 DevKitC-1 N16R8)
+# 2. Build &amp; Upload for Default Board (LilyGO T-Deck / T-Deck Plus)
 pio run -e lilygo-t-deck -t upload
   
 
