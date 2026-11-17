@@ -261,6 +261,10 @@ pio run -e lilygo-t-hmi -t upload        # LilyGO T-HMI
     <td><a href="Documentation/Kryon3D_Engine_Guide.md"><strong>Kryon3D Engine Docs</strong></a></td>
     <td>Developing with the Kryon3D graphics engine.</td>
   </tr>
+    <tr>
+    <td><a href="Documentation/OnDeviceAI-Docs"><strong>On-Device AI Docs</strong></a></td>
+    <td>Docs Related to Local On Device AI</td>
+  </tr>
   <tr>
     <td><a href="CHANGELOG.md"><strong>Changelog</strong></a></td>
     <td>Changes, additions, fixes, and breaking changes.</td>
