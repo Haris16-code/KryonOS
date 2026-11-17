@@ -35,7 +35,6 @@ Documentation/OnDeviceAI-Docs/
 * **Model Family**: 4.0 Million Parameter Conditional DCGAN / VAE Generator (`kryonimage_3m_96_800.krai`).
 * **Classes**: 18 Pokémon Elemental Types (`Normal`, `Fire`, `Water`, `Grass`, `Electric`, `Ice`, `Fighting`, `Poison`, `Ground`, `Flying`, `Psychic`, `Bug`, `Rock`, `Ghost`, `Dragon`, `Steel`, `Fairy`, `Dark`).
 * **Resolution**: 96x96 RGB565 direct-to-glass DMA blit.
-* **Training Scripts**: [`train-kaggle-t4x2.py`](../../Kryon-OnDevice-AI/train-kaggle-t4x2.py), [`train-kaggle-v5e-8.py`](../../Kryon-OnDevice-AI/train-kaggle-v5e-8.py), [`train-sprites-t4x2.py`](../../Kryon-OnDevice-AI/train-sprites-t4x2.py), [`train-sugimori-t4x2.py`](../../Kryon-OnDevice-AI/train-sugimori-t4x2.py).
 * **Notebook**: [`KryonImage_3M_Model_Trainer.ipynb`](./Image-Models/KryonImage_3M_Model_Trainer.ipynb)
 * **Python Script**: [`KryonImage_Colab_Trainer.py`](./Image-Models/KryonImage_Colab_Trainer.py)
 * **Technical Guide**: [`Image-Models/README.md`](./Image-Models/README.md)
