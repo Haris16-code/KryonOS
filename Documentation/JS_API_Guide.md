@@ -149,7 +149,7 @@ The `System` object provides low-level hardware-accelerated bindings to the ESP3
 
 ## 3. Display Drawing Pipeline
 
-HarixOS uses a direct-to-glass rendering pipeline without double-buffering. Calling shape-drawing functions directly overwrites pixels on the TFT screen.
+KryonOS uses a direct-to-glass rendering pipeline without double-buffering. Calling shape-drawing functions directly overwrites pixels on the TFT screen.
 
 ### Color Engine
 The ESP32 TFT uses the high-performance **16-bit RGB565** color format. You can define colors directly via Hex (e.g. `0xF800` for Red), or use the color conversion API.
@@ -302,7 +302,7 @@ Double Buffering allows you to draw shapes invisibly to an off-screen RAM buffer
 
 ## 4. Hardware GPIO (General Purpose Input/Output)
 
-HarixOS enables direct hardware control of the ESP32 microcontroller pins via `System.gpio`.
+KryonOS enables direct hardware control of the ESP32 microcontroller pins via `System.gpio`.
 
 ### Constants
 - `System.gpio.INPUT`
