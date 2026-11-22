@@ -266,6 +266,10 @@ pio run -e lilygo-t-hmi -t upload        # LilyGO T-HMI
     <td>Docs Related to Local On Device AI</td>
   </tr>
   <tr>
+    <td><a href="https://blog.kryonos.harislab.tech/what-can-you-build-with-kryonos-cloud-ai"><strong>What Can You Build with KryonOS Cloud AI?</strong></a></td>
+    <td>Discover practical applications and real-world possibilities of KryonOS Cloud AI</td>
+</tr>
+  <tr>
     <td><a href="CHANGELOG.md"><strong>Changelog</strong></a></td>
     <td>Changes, additions, fixes, and breaking changes.</td>
   </tr>
