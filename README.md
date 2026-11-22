@@ -328,8 +328,14 @@ Areas where contributions are especially useful include:
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
 <p>Due to budget constraints, experimental board ports (Cardputer, T-HMI) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
 <p>&rarr; <a href="https://patreon.com/KryonOS">Support KryonOS Development</a></p>
-<hr>
+<h2>Contributors</h2>
 
+Thanks to everyone who contributes to making KryonOS better!
+
+<a href="https://github.com/Haris16-code/KryonOS/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=Haris16-code/KryonOS" />
+</a>
+<hr>
 <h2 align="center">Our Sponsors</h2>
 
 <p align="center">
