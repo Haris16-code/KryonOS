@@ -335,8 +335,10 @@ Thanks to everyone who contributes to making KryonOS better!
 <a href="https://github.com/Haris16-code/KryonOS/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=Haris16-code/KryonOS" />
 </a>
-<h2 align="center">Our Sponsors</h2>
 
+---
+
+<h2 align="center">Our Sponsors</h2>
 <p align="center">
   We would like to thank our sponsors for supporting KryonOS
   and helping us make this project possible.
