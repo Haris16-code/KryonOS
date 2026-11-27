@@ -1,53 +1,75 @@
-name: Sync Announcement to Open Collective
+name: Sync Announcements
 
 on:
   discussion:
     types: [created]
 
 jobs:
-  publish_update:
+  draft_ghost_post:
     if: github.event.discussion.category.name == 'Announcements'
     runs-on: ubuntu-latest
+
     steps:
-      - name: Post Update to Open Collective
+      - name: Create Draft Post in Ghost CMS
         env:
-          OC_TOKEN: ${{ secrets.OPENCOLLECTIVE_PERSONAL_TOKEN }}
+          GHOST_URL: ${{ secrets.GHOST_URL }}
+          GHOST_ADMIN_API_KEY: ${{ secrets.GHOST_ADMIN_API_KEY }}
           TITLE: ${{ github.event.discussion.title }}
-          BODY_HTML: ${{ github.event.discussion.body }}
+          BODY_MD: ${{ github.event.discussion.body }}
           URL: ${{ github.event.discussion.html_url }}
-          SLUG: "kryonos" # Your Open Collective slug
         run: |
-          # 1. Add an original discussion link header to your HTML body
-          FINAL_HTML="<p><em>Originally posted on <a href='${URL}'>GitHub Discussions</a></em></p><hr/>${BODY_HTML}"
+          npm install --no-save marked jsonwebtoken
+          node -e '
+            const jwt = require("jsonwebtoken");
+            const { marked } = require("marked");
 
-          # 2. Construct GraphQL query safely via jq
-          GRAPHQL_PAYLOAD=$(jq -n \
-            --arg slug "$SLUG" \
-            --arg title "$TITLE" \
-            --arg html "$FINAL_HTML" \
-            '{
-              query: "mutation CreateAndPublishUpdate($update: UpdateCreateInput!) { createUpdate(update: $update) { id title isPrivate } }",
-              variables: {
-                update: {
-                  account: { slug: $slug },
-                  title: $title,
-                  html: $html,
-                  isPrivate: false,
-                  makePublicOn: null
-                }
+            async function createGhostDraft() {
+              const apiUrl = process.env.GHOST_URL.replace(/\/$/, "");
+              const apiKey = process.env.GHOST_ADMIN_API_KEY;
+              const title = process.env.TITLE;
+              const rawMarkdown = process.env.BODY_MD || "";
+              const discussionUrl = process.env.URL;
+
+              // 1. Sign short-lived JWT from Ghost Admin API Key (id:secret)
+              const [id, secret] = apiKey.split(":");
+              const token = jwt.sign({}, Buffer.from(secret, "hex"), {
+                keyid: id,
+                algorithm: "HS256",
+                expiresIn: "5m",
+                audience: "/admin/"
+              });
+
+              // 2. Convert GitHub Markdown to HTML and prepend source link
+              const parsedHtml = marked.parse(rawMarkdown, { gfm: true });
+              const finalHtml = `<p><em>Originally posted on <a href="${discussionUrl}">GitHub Discussions</a></em></p><hr>${parsedHtml}`;
+
+              // 3. Create draft post via Ghost Admin API
+              const response = await fetch(`${apiUrl}/ghost/api/admin/posts/?source=html`, {
+                method: "POST",
+                headers: {
+                  "Authorization": `Ghost ${token}`,
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  posts: [
+                    {
+                      title: title,
+                      html: finalHtml,
+                      status: "draft",
+                      tags: [{ name: "Announcements" }]
+                    }
+                  ]
+                })
+              });
+
+              const data = await response.json();
+              if (!response.ok) {
+                console.error("Failed to create Ghost draft:", JSON.stringify(data, null, 2));
+                process.exit(1);
               }
-            }')
 
-          # 3. Send request to Open Collective API
-          RESPONSE=$(curl -s -X POST https://api.opencollective.com/graphql/v2 \
-            -H "Content-Type: application/json" \
-            -H "Personal-Token: $OC_TOKEN" \
-            -d "$GRAPHQL_PAYLOAD")
+              console.log(`Ghost draft created: ${data.posts[0].id}`);
+            }
 
-          echo "Response: $RESPONSE"
-
-          # 4. Fail step if API returned errors
-          if echo "$RESPONSE" | grep -q '"errors"'; then
-            echo "Failed to post update to Open Collective"
-            exit 1
-          fi
+            createGhostDraft();
+          '
