@@ -324,6 +324,21 @@ Areas where contributions are especially useful include:
   <li>Documentation</li>
   <li>Hardware testing and validation</li>
 </ul>
+<hr>
+<h3>☁️ KryonCloud Contributor Plan</h3>
+
+<p>
+  Are you contributing to KryonOS? Apply for the
+  <strong>free KryonCloud Contributor Plan</strong> and receive
+  expanded access to KryonCloud AI and Cloud Storage as a
+  thank-you for your contributions to the project.
+</p>
+
+<p>
+  <a href="https://kryonos.harislab.tech/apply-contributor">
+    <strong>Apply for Free →</strong>
+  </a>
+</p>
 <h2>Support KryonOS</h2>
 <p>KryonOS is an independent, open-source project. Developing an operating system, maintaining multi-board hardware drivers, and building runtime engines requires significant time and physical test equipment.</p>
 <p>Due to budget constraints, experimental board ports (Cardputer, T-HMI) cannot yet be bench-tested in person. Your financial support directly funds the acquisition of hardware test boards, displays, sensors, and continuous software development.</p>
@@ -337,7 +352,21 @@ Thanks to everyone who contributes to making KryonOS better!
 </a>
 
 ---
+<h3>🌟 KryonOS Community Showcase</h3>
 
+<p>
+  Have you built something related to KryonOS? Share your creations
+  with the community and explore projects made by fellow developers.
+  Showcase your web-based tools, utilities, developer resources,
+  hardware projects, tutorials, experiments, and much more!
+</p>
+
+<p>
+  <a href="https://kryonos.harislab.tech/showcase">
+    <strong>Explore Community Showcase →</strong>
+  </a>
+</p>
+<hr>
 <h2 align="center">Our Sponsors</h2>
 <p align="center">
   We would like to thank our sponsors for supporting KryonOS
